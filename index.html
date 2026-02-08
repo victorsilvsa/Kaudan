@@ -1109,85 +1109,138 @@
 
 
         // ===== CALENDAR =====
-        function renderCalendar() {
-            const year = currentMonthYear.getFullYear();
-            const month = currentMonthYear.getMonth();
-            const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-            const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
+   function renderCalendar() {
+    const year = currentMonthYear.getFullYear();
+    const month = currentMonthYear.getMonth();
+    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
 
-            let html = `
-                <div class="card">
-                    <div class="card-header">
-                        <button class="btn btn-secondary btn-small" onclick="prevMonth()"><i class="fas fa-chevron-left"></i></button>
-                        <div class="card-title" style="margin-bottom: 0; flex: 1; text-align: center;">
-                            <i class="fas fa-calendar-alt"></i> ${monthNames[month]} ${year}
-                        </div>
-                        <button class="btn btn-secondary btn-small" onclick="nextMonth()"><i class="fas fa-chevron-right"></i></button>
-                    </div>
+    let html = `
+        <div class="card" style="width: 100%; max-width: 100%; padding: 0.5rem; box-sizing: border-box;">
+            <div class="card-header" style="display: flex; align-items: center; justify-content: space-between; gap: 0.25rem; margin-bottom: 0.75rem; flex-wrap: nowrap;">
+                <button class="btn btn-secondary btn-small" onclick="prevMonth()" style="padding: 0.35rem; min-width: 32px; height: 32px; flex-shrink: 0;"><i class="fas fa-chevron-left" style="font-size: clamp(0.7rem, 2vw, 1rem);"></i></button>
+                <div class="card-title" style="margin-bottom: 0; flex: 1; text-align: center; font-size: clamp(0.85rem, 3.5vw, 1.1rem); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    <i class="fas fa-calendar-alt"></i> ${monthNames[month]} ${year}
+                </div>
+                <button class="btn btn-secondary btn-small" onclick="nextMonth()" style="padding: 0.35rem; min-width: 32px; height: 32px; flex-shrink: 0;"><i class="fas fa-chevron-right" style="font-size: clamp(0.7rem, 2vw, 1rem);"></i></button>
+            </div>
 
-                    <div class="calendar-header">
-            `;
+            <div class="calendar-header" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.15rem; margin-bottom: 0.35rem; width: 100%; box-sizing: border-box;">
+    `;
 
-            dayNames.forEach(day => {
-                html += `<div class="calendar-day-name">${day}</div>`;
-            });
+    dayNames.forEach(day => {
+        html += `<div class="calendar-day-name" style="text-align: center; font-weight: 600; font-size: clamp(0.65rem, 2.2vw, 0.8rem); padding: 0.35rem 0.15rem; overflow: hidden; text-overflow: ellipsis;">${day}</div>`;
+    });
 
-            html += `</div><div class="calendar">`;
+    html += `</div><div class="calendar" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.15rem; width: 100%; box-sizing: border-box;">`;
 
-            const firstDay = new Date(year, month, 1).getDay();
-            const daysInMonth = new Date(year, month + 1, 0).getDate();
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-            for (let i = 0; i < firstDay; i++) {
-                html += `<div></div>`;
-            }
+    for (let i = 0; i < firstDay; i++) {
+        html += `<div style="aspect-ratio: 1; width: 100%;"></div>`;
+    }
 
-            for (let day = 1; day <= daysInMonth; day++) {
-                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                const currentDate = new Date(dateStr + 'T00:00:00');
-                const isRented = isDateRented(dateStr);
-                const isReserved = isDateReserved(dateStr);
-                const isSelected = selectedDays.includes(dateStr);
-                const isPast = currentDate < today;
+    for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const currentDate = new Date(dateStr + 'T00:00:00');
+        const isRented = isDateRented(dateStr);
+        const isReserved = isDateReserved(dateStr);
+        const isSelected = selectedDays.includes(dateStr);
+        const isPast = currentDate < today;
 
-                let classes = 'calendar-day';
-                if (isPast) classes += ' disabled';
-                else if (isRented) classes += ' rented';
-                else if (isReserved) classes += ' reserved';
-                else if (isSelected) classes += ' selected';
-                else classes += ' available';
+        let classes = 'calendar-day';
+        let bgColor = '#ffffff';
+        let textColor = '#333333';
+        let cursor = 'pointer';
+        let opacity = '1';
 
-                const onclick = isPast || isRented || isReserved ? '' : `onclick="toggleDay('${dateStr}')"`;
-                html += `<div class="${classes}" ${onclick}>${day}</div>`;
-            }
-
-            html += `</div></div>`;
-
-            if (selectedDays.length > 0) {
-                html += `
-                    <div class="card">
-                        <div class="card-header">
-                            <div class="card-title"><i class="fas fa-check-circle"></i> Período Selecionado</div>
-                        </div>
-                        <div style="margin-bottom: 1.5rem;">
-                            <div style="font-weight: 700; margin-bottom: 0.5rem;">${selectedDays.length} dias selecionados</div>
-                            <div style="color: var(--cinza-500);">
-                                ${formatDate(selectedDays[0])} a ${formatDate(selectedDays[selectedDays.length - 1])}
-                            </div>
-                        </div>
-                        <button class="btn btn-primary btn-block" onclick="openRentalFlow()">
-                            <i class="fas fa-plus"></i> Alugar Período
-                        </button>
-                        <button class="btn btn-secondary btn-block" style="margin-top: 0.75rem;" onclick="openReserveFlow()">
-                            <i class="fas fa-bookmark"></i> Fazer Reserva
-                        </button>
-                    </div>
-                `;
-            }
-
-            return html;
+        if (isPast) {
+            classes += ' disabled';
+            bgColor = '#f0f0f0';
+            textColor = '#999999';
+            cursor = 'not-allowed';
+            opacity = '0.6';
+        } else if (isRented) {
+            classes += ' rented';
+            bgColor = '#ff6b6b';
+            textColor = '#ffffff';
+            cursor = 'not-allowed';
+        } else if (isReserved) {
+            classes += ' reserved';
+            bgColor = '#ffa500';
+            textColor = '#ffffff';
+            cursor = 'not-allowed';
+        } else if (isSelected) {
+            classes += ' selected';
+            bgColor = '#4CAF50';
+            textColor = '#ffffff';
+        } else {
+            classes += ' available';
+            bgColor = '#e8f5e9';
         }
+
+        const onclick = isPast || isRented || isReserved ? '' : `onclick="toggleDay('${dateStr}')"`;
+        html += `
+            <div class="${classes}" ${onclick} style="
+                aspect-ratio: 1;
+                width: 100%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 0.35rem;
+                background-color: ${bgColor};
+                color: ${textColor};
+                font-weight: 600;
+                font-size: clamp(0.65rem, 2.5vw, 0.85rem);
+                cursor: ${cursor};
+                opacity: ${opacity};
+                transition: all 0.2s ease;
+                border: 2px solid transparent;
+                user-select: none;
+                box-sizing: border-box;
+                min-height: 30px;
+            " onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none';">
+                ${day}
+            </div>
+        `;
+    }
+
+    html += `</div></div>`;
+
+    if (selectedDays.length > 0) {
+        const diasSelecionados = selectedDays.length;
+        const dataInicial = formatDate(selectedDays[0]);
+        const dataFinal = formatDate(selectedDays[selectedDays.length - 1]);
+
+        html += `
+            <div class="card" style="width: 100%; max-width: 100%; padding: 0.75rem; box-sizing: border-box; margin-top: 0.75rem;">
+                <div class="card-header" style="margin-bottom: 0.75rem;">
+                    <div class="card-title" style="margin-bottom: 0; font-size: clamp(0.85rem, 3.5vw, 1rem);"><i class="fas fa-check-circle"></i> Período Selecionado</div>
+                </div>
+                <div style="margin-bottom: 0.75rem; width: 100%; box-sizing: border-box;">
+                    <div style="font-weight: 700; margin-bottom: 0.35rem; font-size: clamp(0.8rem, 3.5vw, 0.95rem);">${diasSelecionados} dias</div>
+                    <div style="color: var(--cinza-500); font-size: clamp(0.75rem, 3vw, 0.85rem);">
+                        ${dataInicial} a ${dataFinal}
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; width: 100%; box-sizing: border-box;">
+                    <button class="btn btn-primary" onclick="openRentalFlow()" style="width: 100%; padding: 0.6rem 0.5rem; font-size: clamp(0.75rem, 3vw, 0.9rem); box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        <i class="fas fa-plus"></i> Alugar
+                    </button>
+                    <button class="btn btn-secondary" onclick="openReserveFlow()" style="width: 100%; padding: 0.6rem 0.5rem; font-size: clamp(0.75rem, 3vw, 0.9rem); box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        <i class="fas fa-bookmark"></i> Reservar
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    return html;
+}
+
 
         function toggleDay(dateStr) {
             const index = selectedDays.indexOf(dateStr);
@@ -1674,370 +1727,425 @@
             );
         }
 
+function renderReports() {
+    return `
+        <div class="pdf-selector">
+            <label class="pdf-selector-label"><i class="fas fa-file-pdf"></i> Tipo de Relatório:</label>
+            <select class="pdf-selector-select" id="pdfTypeSelect" onchange="pdfType = this.value">
+                <option value="geral">Relatório Geral (Completo)</option>
+                <option value="receitas">Receitas (Aluguéis)</option>
+                <option value="despesas">Despesas Detalhadas</option>
+                <option value="clientes">Clientes e Locações</option>
+            </select>
+            <button class="export-btn" onclick="exportReportPDF()">
+                <i class="fas fa-download"></i> Exportar PDF
+            </button>
+        </div>
 
-
-        // ===== REPORTS =====
-        function renderReports() {
-            return `
-                <div class="pdf-selector">
-                    <label class="pdf-selector-label"><i class="fas fa-file-pdf"></i> Tipo de Relatório:</label>
-                    <select class="pdf-selector-select" id="pdfTypeSelect" onchange="pdfType = this.value">
-                        <option value="geral">Relatório Geral (Completo)</option>
-                        <option value="receitas">Receitas (Aluguéis)</option>
-                        <option value="despesas">Despesas Detalhadas</option>
-                        <option value="clientes">Clientes e Locações</option>
-                    </select>
-                    <button class="export-btn" onclick="exportReportPDF()">
-                        <i class="fas fa-download"></i> Exportar PDF
-                    </button>
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-chart-bar"></i> Resumo do Negócio</div>
+            </div>
+            <div class="stats-grid" style="margin: 0;">
+                <div class="stat-box">
+                    <div class="stat-label">Capital Atual</div>
+                    <div class="stat-value">${formatCurrency(calculateCapital())}</div>
                 </div>
+                <div class="stat-box">
+                    <div class="stat-label">Receita Total</div>
+                    <div class="stat-value">${formatCurrency(calculateTotalRevenue())}</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Despesa Total</div>
+                    <div class="stat-value">${formatCurrency(calculateTotalExpenses())}</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Lucro Líquido</div>
+                    <div class="stat-value">${formatCurrency(calculateTotalRevenue() - calculateTotalExpenses())}</div>
+                </div>
+            </div>
+        </div>
+    `;
+}
 
-                <div class="card">
-                    <div class="card-header">
-                        <div class="card-title"><i class="fas fa-chart-bar"></i> Resumo do Negócio</div>
+function getMonthName() {
+    return new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase();
+}
+
+function showToastMessage(message, type = 'success') {
+    const toastMsg = document.createElement('div');
+    const bgColor = type === 'success' ? '#10b981' : '#ef4444';
+    const icon = type === 'success' ? '✓' : '✗';
+    toastMsg.style.cssText = `position:fixed;top:20px;right:20px;background:${bgColor};color:white;padding:16px 24px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.2);font-weight:600;z-index:9999;font-size:14px;`;
+    toastMsg.textContent = `${icon} ${message}`;
+    document.body.appendChild(toastMsg);
+    setTimeout(() => toastMsg.remove(), 3000);
+}
+
+async function exportReportPDF() {
+    const pdfType = document.getElementById('pdfTypeSelect').value;
+    const { jsPDF } = window.jspdf;
+    const exportBtn = event.target.closest('.export-btn');
+    const originalHTML = exportBtn.innerHTML;
+
+    exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Gerando...';
+    exportBtn.disabled = true;
+
+    const pdfContainer = document.createElement('div');
+    pdfContainer.style.cssText = 'position:absolute;left:-9999px;top:0;background:white;';
+
+    let pdfHTML = '';
+
+    if (pdfType === 'geral' || pdfType === 'receitas') {
+        pdfHTML += generateReceitasPageHTML();
+    }
+
+    if (pdfType === 'geral' || pdfType === 'despesas') {
+        pdfHTML += generateDespesasPageHTML();
+    }
+
+    if (pdfType === 'geral' || pdfType === 'clientes') {
+        pdfHTML += generateClientesPageHTML();
+    }
+
+    pdfContainer.innerHTML = pdfHTML;
+    document.body.appendChild(pdfContainer);
+
+    try {
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        const pages = pdfContainer.querySelectorAll('.pdf-page');
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pdfWidth = 210;
+
+        for (let i = 0; i < pages.length; i++) {
+            const canvas = await html2canvas(pages[i], {
+                scale: 2,
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff',
+                width: 793,
+                windowWidth: 793
+            });
+
+            const imgData = canvas.toDataURL('image/png');
+            const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+
+            if (i > 0) {
+                pdf.addPage();
+            }
+
+            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgHeight);
+        }
+
+        pdf.save(`relatorio-kaudan-${new Date().toISOString().split('T')[0]}.pdf`);
+        showToastMessage('PDF exportado com sucesso!', 'success');
+        exportBtn.innerHTML = originalHTML;
+        exportBtn.disabled = false;
+    } catch (error) {
+        console.error('Erro ao gerar PDF:', error);
+        showToastMessage('Erro ao gerar PDF. Tente novamente!', 'error');
+        exportBtn.innerHTML = originalHTML;
+        exportBtn.disabled = false;
+    } finally {
+        document.body.removeChild(pdfContainer);
+    }
+}
+
+const PDF_COLORS = {
+    receitas: { primary: '#10b981', dark: '#047857', light: '#d1fae5', bg: '#f0fdf4' },
+    despesas: { primary: '#f59e0b', dark: '#d97706', light: '#fed7aa', bg: '#fef3c7' },
+    clientes: { primary: '#3b82f6', dark: '#1e40af', light: '#bfdbfe', bg: '#eff6ff' }
+};
+
+function getPDFPageBase(type, title, subtitle, icon) {
+    const colors = PDF_COLORS[type] || PDF_COLORS.receitas;
+    
+    return {
+        getHeader: () => `
+            <div style="background: linear-gradient(135deg, ${colors.primary} 0%, ${colors.dark} 100%); color: white; padding: 20px 36px; display: flex; justify-content: space-between; align-items: center; gap: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                <div style="flex: 1;">
+                    <div style="font-size: 18px; font-weight: 900; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; letter-spacing: -0.5px;"><i class="fas fa-${icon}"></i> ${title}</div>
+                    <div style="font-size: 13px; font-weight: 600; opacity: 0.95; display: flex; gap: 16px; align-items: center;">
+                        <div>${subtitle}</div>
+                        <div style="display: flex; gap: 12px; opacity: 0.85; font-size: 12px;">
+                            <div><i class="fas fa-building" style="margin-right: 3px;"></i>Recanto KauDan</div>
+                            <div><i class="fas fa-calendar-days" style="margin-right: 3px;"></i>${new Date().toLocaleDateString('pt-BR')}</div>
+                        </div>
                     </div>
-                    <div class="stats-grid" style="margin: 0;">
-                        <div class="stat-box">
-                            <div class="stat-label">Capital Atual</div>
-                            <div class="stat-value">${formatCurrency(calculateCapital())}</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-label">Receita Total</div>
-                            <div class="stat-value">${formatCurrency(calculateTotalRevenue())}</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-label">Despesa Total</div>
-                            <div class="stat-value">${formatCurrency(calculateTotalExpenses())}</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-label">Lucro Líquido</div>
-                            <div class="stat-value">${formatCurrency(calculateTotalRevenue() - calculateTotalExpenses())}</div>
-                        </div>
+                </div>
+                <div style="text-align: center; opacity: 0.95; border-left: 3px solid rgba(255,255,255,0.3); padding-left: 20px;">
+                    <div style="font-size: 12px; font-weight: 700; margin-bottom: 6px; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.3px;">Período</div>
+                    <div style="font-size: 16px; font-weight: 900;">${getMonthName()}</div>
+                </div>
+            </div>
+        `,
+        getFooter: (pageNum, totalPages, info = '') => `
+            <div style="padding: 12px 36px; border-top: 3px solid ${colors.light}; background: #fafafa; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #64748b; font-weight: 600;">
+                <div><i class="fas fa-info-circle" style="margin-right: 4px; color: ${colors.primary};"></i> ${info || 'Relatório gerado automaticamente'}</div>
+                <div><span style="color: ${colors.primary}; font-weight: 900;">Página ${pageNum}</span> de ${totalPages}</div>
+            </div>
+        `,
+        getEmptyState: () => `
+            <div class="pdf-page" style="width: 210mm; height: 297mm; background: #f8fafc; color: #111827; font-family: 'Segoe UI', -apple-system, sans-serif; padding: 0; margin-bottom: 20px; display: flex; flex-direction: column;">
+                ${getPDFPageBase(type, title, subtitle, icon).getHeader()}
+                <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 50px; text-align: center;">
+                    <div style="font-size: 120px; color: #cbd5e1; margin-bottom: 24px;"><i class="fas fa-inbox"></i></div>
+                    <div style="font-size: 20px; font-weight: 700; color: #64748b; margin-bottom: 12px;">Sem dados para exibir</div>
+                    <div style="font-size: 15px; color: #94a3b8;">Adicione registros para gerar este relatório</div>
+                </div>
+            </div>
+        `
+    };
+}
+
+function generateReceitasPageHTML() {
+    const totalReceita = calculateTotalRevenue();
+    const monthlyRevenue = calculateMonthlyRevenue();
+    const sortedRentals = [...rentals].sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+    const colors = PDF_COLORS.receitas;
+    const base = getPDFPageBase('receitas', 'ALUGUÉIS', 'Relatório de Receitas', 'key');
+
+    if (sortedRentals.length === 0) {
+        return base.getEmptyState();
+    }
+
+    let pagesHTML = '';
+    let currentPage = [];
+    const rowsPerPage = 25;
+
+    sortedRentals.forEach((rental, idx) => {
+        currentPage.push(rental);
+        if (currentPage.length === rowsPerPage || idx === sortedRentals.length - 1) {
+            const pageNum = Math.floor(idx / rowsPerPage) + 1;
+            const totalPages = Math.ceil(sortedRentals.length / rowsPerPage);
+
+            const metricsCards = pageNum === 1 ? `
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px;">
+                    <div style="background: linear-gradient(135deg, ${colors.primary}15 0%, ${colors.primary}08 100%); border: 2px solid ${colors.light}; border-radius: 8px; padding: 12px; text-align: center; box-shadow: 0 2px 6px rgba(16, 185, 129, 0.1);">
+                        <div style="color: ${colors.primary}; font-size: 22px; margin-bottom: 4px;"><i class="fas fa-money-bill-wave"></i></div>
+                        <div style="color: #64748b; font-size: 9px; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.3px;">Total Receita</div>
+                        <div style="color: ${colors.primary}; font-size: 14px; font-weight: 900;">${formatCurrency(totalReceita).replace('R$', '').trim()}</div>
                     </div>
+                    <div style="background: linear-gradient(135deg, #f59e0b15 0%, #f59e0b08 100%); border: 2px solid #fef08a; border-radius: 8px; padding: 12px; text-align: center; box-shadow: 0 2px 6px rgba(245, 158, 11, 0.1);">
+                        <div style="color: #f59e0b; font-size: 22px; margin-bottom: 4px;"><i class="fas fa-calendar-check"></i></div>
+                        <div style="color: #64748b; font-size: 9px; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.3px;">Este Mês</div>
+                        <div style="color: #f59e0b; font-size: 14px; font-weight: 900;">${formatCurrency(monthlyRevenue).replace('R$', '').trim()}</div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #a855f715 0%, #a855f708 100%); border: 2px solid #e9d5ff; border-radius: 8px; padding: 12px; text-align: center; box-shadow: 0 2px 6px rgba(168, 85, 247, 0.1);">
+                        <div style="color: #a855f7; font-size: 22px; margin-bottom: 4px;"><i class="fas fa-home"></i></div>
+                        <div style="color: #64748b; font-size: 9px; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.3px;">Locações</div>
+                        <div style="color: #a855f7; font-size: 14px; font-weight: 900;">${rentals.length}</div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #3b82f615 0%, #3b82f608 100%); border: 2px solid #bfdbfe; border-radius: 8px; padding: 12px; text-align: center; box-shadow: 0 2px 6px rgba(59, 130, 246, 0.1);">
+                        <div style="color: #3b82f6; font-size: 22px; margin-bottom: 4px;"><i class="fas fa-chart-line"></i></div>
+                        <div style="color: #64748b; font-size: 9px; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.3px;">Ticket Médio</div>
+                        <div style="color: #3b82f6; font-size: 14px; font-weight: 900;">${formatCurrency(rentals.length > 0 ? totalReceita / rentals.length : 0).replace('R$', '').trim()}</div>
+                    </div>
+                </div>
+            ` : '';
+
+            pagesHTML += `
+                <div class="pdf-page" style="width: 210mm; height: 297mm; background: #f8fafc; color: #111827; font-family: 'Segoe UI', -apple-system, sans-serif; padding: 0; margin-bottom: 20px; display: flex; flex-direction: column;">
+                    ${base.getHeader()}
+                    <div style="padding: 14px 24px; flex: 1; display: flex; flex-direction: column; gap: 10px; overflow-y: auto;">
+                        ${metricsCards}
+                        <div style="border-bottom: 3px solid ${colors.primary}; padding-bottom: 6px;">
+                            <div style="font-size: 13px; font-weight: 900; color: #0f172a; display: flex; align-items: center; gap: 8px;"><i class="fas fa-list-check"></i> ${pageNum > 1 ? 'PARTE ' + pageNum + ' - ' : ''}ALUGUÉIS</div>
+                        </div>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 10px; background: white; border-radius: 6px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                            <thead>
+                                <tr style="background: linear-gradient(135deg, ${colors.primary} 0%, ${colors.dark} 100%); color: white; height: 28px;">
+                                    <th style="padding: 7px 8px; text-align: center; font-weight: 800; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; border-right: 1px solid rgba(255,255,255,0.2);">Cliente</th>
+                                    <th style="padding: 7px 8px; text-align: center; font-weight: 800; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; border-right: 1px solid rgba(255,255,255,0.2);">Início</th>
+                                    <th style="padding: 7px 8px; text-align: center; font-weight: 800; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; border-right: 1px solid rgba(255,255,255,0.2);">Fim</th>
+                                    <th style="padding: 7px 8px; text-align: center; font-weight: 800; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; border-right: 1px solid rgba(255,255,255,0.2);">Dias</th>
+                                    <th style="padding: 7px 8px; text-align: center; font-weight: 800; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; border-right: 1px solid rgba(255,255,255,0.2);">Diária</th>
+                                    <th style="padding: 7px 8px; text-align: center; font-weight: 800; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px;">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${currentPage.map((r, idx) => `
+                                    <tr style="border-bottom: 2px solid ${idx === currentPage.length - 1 ? colors.primary : '#e5e7eb'}; background: ${idx % 2 === 0 ? '#ffffff' : colors.bg}; height: 24px;">
+                                        <td style="padding: 6px 8px; font-weight: 700; color: ${colors.primary}; text-align: center; border-right: 1px solid #e5e7eb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px;">${r.clientName.substring(0, 15)}</td>
+                                        <td style="padding: 6px 8px; text-align: center; color: #475569; font-weight: 600; border-right: 1px solid #e5e7eb; font-size: 10px;">${formatDate(r.startDate)}</td>
+                                        <td style="padding: 6px 8px; text-align: center; color: #475569; font-weight: 600; border-right: 1px solid #e5e7eb; font-size: 10px;">${formatDate(r.endDate)}</td>
+                                        <td style="padding: 6px 8px; text-align: center; color: ${colors.primary}; font-weight: 800; background: ${idx % 2 === 0 ? colors.bg : '#ecfdf5'}; border-right: 1px solid #e5e7eb; font-size: 10px;">${r.days}</td>
+                                        <td style="padding: 6px 8px; text-align: center; color: #f59e0b; font-weight: 700; border-right: 1px solid #e5e7eb; font-size: 10px;">${formatCurrency(r.dailyRate).replace('R$', '').trim()}</td>
+                                        <td style="padding: 6px 8px; text-align: center; font-weight: 900; color: ${colors.primary}; background: ${idx % 2 === 0 ? colors.bg : '#ecfdf5'}; font-size: 10px;">${formatCurrency(r.total).replace('R$', '').trim()}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    ${base.getFooter(pageNum, totalPages, `Total: ${formatCurrency(totalReceita)}`)}
                 </div>
             `;
+            currentPage = [];
         }
+    });
 
-        async function exportReportPDF() {
-            const pdfType = document.getElementById('pdfTypeSelect').value;
-            const { jsPDF } = window.jspdf;
-            const exportBtn = event.target.closest('.export-btn');
-            const originalHTML = exportBtn.innerHTML;
+    return pagesHTML;
+}
 
-            exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Gerando...';
-            exportBtn.disabled = true;
+function generateDespesasPageHTML() {
+    const totalDespesas = calculateTotalExpenses();
+    const categoryTotals = {};
+    expenses.forEach(exp => {
+        categoryTotals[exp.category] = (categoryTotals[exp.category] || 0) + exp.amount;
+    });
 
-            const pdfContainer = document.createElement('div');
-            pdfContainer.style.cssText = 'position:absolute;left:-9999px;top:0;background:white;';
+    const colors = PDF_COLORS.despesas;
+    const base = getPDFPageBase('despesas', 'DESPESAS', 'Análise Detalhada de Gastos', 'receipt');
 
-            let pdfHTML = '';
+    if (expenses.length === 0) {
+        return base.getEmptyState();
+    }
 
-            if (pdfType === 'geral' || pdfType === 'receitas') {
-                pdfHTML += generateReceitasPageHTML();
-            }
+    const sortedExpenses = [...expenses].sort((a, b) => new Date(b.date) - new Date(a.date));
+    let pagesHTML = '';
+    let currentPage = [];
+    const rowsPerPage = 25;
 
-            if (pdfType === 'geral' || pdfType === 'despesas') {
-                pdfHTML += generateDespesasPageHTML();
-            }
+    sortedExpenses.forEach((exp, idx) => {
+        currentPage.push(exp);
+        if (currentPage.length === rowsPerPage || idx === sortedExpenses.length - 1) {
+            const pageNum = Math.floor(idx / rowsPerPage) + 1;
+            const totalPages = Math.ceil(sortedExpenses.length / rowsPerPage);
 
-            if (pdfType === 'geral' || pdfType === 'clientes') {
-                pdfHTML += generateClientesPageHTML();
-            }
-
-            pdfContainer.innerHTML = pdfHTML;
-            document.body.appendChild(pdfContainer);
-
-            try {
-                await new Promise(resolve => setTimeout(resolve, 500));
-
-                const pages = pdfContainer.querySelectorAll('.pdf-page');
-                const pdf = new jsPDF('p', 'mm', 'a4');
-                const pdfWidth = 210;
-
-                for (let i = 0; i < pages.length; i++) {
-                    const canvas = await html2canvas(pages[i], {
-                        scale: 2,
-                        useCORS: true,
-                        logging: false,
-                        backgroundColor: '#ffffff',
-                        width: 793,
-                        windowWidth: 793
-                    });
-
-                    const imgData = canvas.toDataURL('image/png');
-                    const imgHeight = (canvas.height * pdfWidth) / canvas.width;
-
-                    if (i > 0) {
-                        pdf.addPage();
-                    }
-
-                    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgHeight);
-                }
-
-                pdf.save(`relatorio-kaudan-${new Date().toISOString().split('T')[0]}.pdf`);
-                showAlert('PDF exportado com sucesso!', 'success');
-                exportBtn.innerHTML = originalHTML;
-                exportBtn.disabled = false;
-            } catch (error) {
-                console.error('Erro ao gerar PDF:', error);
-                showAlert('Erro ao gerar PDF. Tente novamente!', 'error');
-                exportBtn.innerHTML = originalHTML;
-                exportBtn.disabled = false;
-            } finally {
-                document.body.removeChild(pdfContainer);
-            }
-        }
-
-        function generateReceitasPageHTML() {
-            const totalReceita = calculateTotalRevenue();
-            const monthlyRevenue = calculateMonthlyRevenue();
-            const sortedRentals = [...rentals].sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
-
-            let pagesHTML = '';
-            let currentPage = [];
-            let rowsPerPage = 12;
-
-            sortedRentals.forEach((rental, idx) => {
-                currentPage.push(rental);
-                if (currentPage.length === rowsPerPage || idx === sortedRentals.length - 1) {
-                    pagesHTML += `
-                            <div class="pdf-page" style="width: 210mm; background: white; color: #111827; font-family: 'Inter', sans-serif; padding: 0; margin-bottom: 20px; min-height: 297mm; display: flex; flex-direction: column;">
-                                <style>
-                                    .pdf-header { background: linear-gradient(135deg, #10b981 0%, #047857 100%); color: white; padding: 30px 40px; width: 100%; }
-                                    .pdf-title { font-size: 32px; font-weight: 900; margin-bottom: 5px; display: flex; align-items: center; gap: 15px; font-family: 'Poppins', sans-serif; }
-                                    .pdf-month { font-size: 20px; font-weight: 700; margin-bottom: 8px; opacity: 0.95; font-family: 'Poppins', sans-serif; }
-                                    .pdf-subtitle { font-size: 13px; opacity: 0.9; margin-bottom: 3px; }
-                                    .pdf-date { font-size: 10px; opacity: 0.8; margin-top: 8px; }
-                                    .pdf-content { padding: 25px 40px; flex: 1; display: flex; flex-direction: column; }
-                                    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
-                                    .stat-card { background: #f8fafc; border: 2px solid #cbd5e1; border-radius: 10px; padding: 12px; text-align: center; }
-                                    .stat-icon { width: 40px; height: 40px; background: linear-gradient(135deg, #10b981 0%, #047857 100%); color: white; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 0 auto 8px; font-size: 18px; }
-                                    .stat-label { color: #64748b; font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 5px; }
-                                    .stat-value { color: #0f172a; font-size: 18px; font-weight: 800; font-family: 'Poppins', sans-serif; }
-                                    .stat-unit { font-size: 10px; color: #64748b; font-weight: 600; }
-                                    .section-title { font-size: 13px; font-weight: 800; color: #0f172a; margin: 18px 0 10px; padding-bottom: 6px; border-bottom: 2.5px solid #10b981; display: flex; align-items: center; gap: 8px; font-family: 'Poppins', sans-serif; }
-                                    .pdf-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 9px; flex: 1; }
-                                    .pdf-table thead { background: #10b981; color: white; position: sticky; top: 0; }
-                                    .pdf-table th, .pdf-table td { padding: 8px 10px; text-align: left; border: 1px solid #d1d5db; font-size: 9px; }
-                                    .pdf-table th { font-weight: 700; text-transform: uppercase; font-size: 8px; letter-spacing: 0.3px; }
-                                    .pdf-table tbody tr:nth-child(even) { background: #f0fdf4; }
-                                    .pdf-footer { margin-top: auto; padding-top: 20px; border-top: 2px solid #10b981; text-align: right; font-size: 9px; color: #64748b; }
-                                    .pdf-total { background: linear-gradient(135deg, #10b981 0%, #047857 100%); color: white; padding: 15px; border-radius: 6px; margin-top: 15px; display: flex; justify-content: space-between; align-items: center; }
-                                    .pdf-total-label { font-size: 16px; font-weight: 700; font-family: 'Poppins', sans-serif; }
-                                    .pdf-total-value { font-size: 24px; font-weight: 800; font-family: 'Poppins', sans-serif; }
-                                    .text-right { text-align: right; font-weight: 600; color: #10b981; }
-                                    .text-center { text-align: center; }
-                                </style>
-                                <div class="pdf-header">
-                                    <div class="pdf-title"><i class="fas fa-key"></i> ALUGUÉIS</div>
-                                    <div class="pdf-month">Relatório de Receitas</div>
-                                    <div class="pdf-subtitle">Recanto KauDan - Controle de Locações</div>
-                                    <div class="pdf-date">Gerado em: ${new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</div>
-                                </div>
-                                <div class="pdf-content">
-                                    ${idx === 0 ? `
-                                        <div class="stats-grid">
-                                            <div class="stat-card">
-                                                <div class="stat-icon"><i class="fas fa-money-bill-wave"></i></div>
-                                                <div class="stat-label">Total de Receita</div>
-                                                <div class="stat-value">${formatCurrency(totalReceita).replace('R$', '').trim()}</div>
-                                                <div class="stat-unit">Período Completo</div>
-                                            </div>
-                                            <div class="stat-card">
-                                                <div class="stat-icon"><i class="fas fa-calendar-alt"></i></div>
-                                                <div class="stat-label">Este Mês</div>
-                                                <div class="stat-value">${formatCurrency(monthlyRevenue).replace('R$', '').trim()}</div>
-                                                <div class="stat-unit">Fevereiro 2025</div>
-                                            </div>
-                                            <div class="stat-card">
-                                                <div class="stat-icon"><i class="fas fa-home"></i></div>
-                                                <div class="stat-label">Total de Locações</div>
-                                                <div class="stat-value">${rentals.length}</div>
-                                                <div class="stat-unit">Registros</div>
-                                            </div>
-                                            <div class="stat-card">
-                                                <div class="stat-icon"><i class="fas fa-chart-line"></i></div>
-                                                <div class="stat-label">Ticket Médio</div>
-                                                <div class="stat-value">${formatCurrency(rentals.length > 0 ? totalReceita / rentals.length : 0).replace('R$', '').trim()}</div>
-                                                <div class="stat-unit">Por Locação</div>
-                                            </div>
-                                        </div>
-                                    ` : ''}
-                                    <div class="section-title"><i class="fas fa-table"></i> Detalhamento de Aluguéis</div>
-                                    <table class="pdf-table">
-                                        <thead>
-                                            <tr>
-                                                <th><i class="fas fa-user"></i> Cliente</th>
-                                                <th><i class="fas fa-calendar-check"></i> Início</th>
-                                                <th><i class="fas fa-calendar-check"></i> Fim</th>
-                                                <th class="text-center"><i class="fas fa-calculator"></i> Dias</th>
-                                                <th class="text-right"><i class="fas fa-coins"></i> Diária</th>
-                                                <th class="text-right"><i class="fas fa-money-bill"></i> Total</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            ${currentPage.map(r => `
-                                                <tr>
-                                                    <td><strong>${r.clientName}</strong></td>
-                                                    <td>${formatDate(r.startDate)}</td>
-                                                    <td>${formatDate(r.endDate)}</td>
-                                                    <td class="text-center">${r.days}</td>
-                                                    <td class="text-right">${formatCurrency(r.dailyRate)}</td>
-                                                    <td class="text-right"><strong>${formatCurrency(r.total)}</strong></td>
-                                                </tr>
-                                            `).join('')}
-                                        </tbody>
-                                    </table>
-                                    <div class="pdf-footer">
-                                        Página ${Math.floor(idx / rowsPerPage) + 1}
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-                    currentPage = [];
-                }
-            });
-
-            return pagesHTML;
-        }
-
-        function generateDespesasPageHTML() {
-            const totalDespesas = calculateTotalExpenses();
-            const categoryTotals = {};
-
-            expenses.forEach(exp => {
-                if (!categoryTotals[exp.category]) {
-                    categoryTotals[exp.category] = 0;
-                }
-                categoryTotals[exp.category] += exp.amount;
-            });
-
-            return `
-                    <div class="pdf-page" style="width: 210mm; background: white; color: #111827; font-family: 'Inter', sans-serif; padding: 0; margin-bottom: 20px;">
-                        <style>
-                            .pdf-header { background: linear-gradient(135deg, #10b981 0%, #047857 100%); color: white; padding: 30px 40px; width: 100%; }
-                            .pdf-title { font-size: 36px; font-weight: 900; margin-bottom: 5px; display: flex; align-items: center; gap: 15px; font-family: 'Poppins', sans-serif; }
-                            .pdf-month { font-size: 22px; font-weight: 700; margin-bottom: 8px; opacity: 0.95; font-family: 'Poppins', sans-serif; }
-                            .pdf-subtitle { font-size: 14px; opacity: 0.9; margin-bottom: 3px; }
-                            .pdf-date { font-size: 11px; opacity: 0.8; margin-top: 8px; }
-                            .pdf-content { padding: 25px 40px; position: relative; }
-                            .category-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px; }
-                            .cat-card { background: #f0fdf4; padding: 15px; border-radius: 8px; border-left: 4px solid #10b981; }
-                            .cat-label { font-weight: 700; margin-bottom: 5px; font-size: 11px; }
-                            .cat-value { font-size: 20px; font-weight: 800; color: #10b981; font-family: 'Poppins', sans-serif; }
-                            .section-title { font-size: 14px; font-weight: 800; color: #0f172a; margin: 20px 0 12px; padding-bottom: 6px; border-bottom: 2.5px solid #10b981; display: flex; align-items: center; gap: 8px; font-family: 'Poppins', sans-serif; }
-                            .pdf-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                            .pdf-table thead { background: #10b981; color: white; }
-                            .pdf-table th, .pdf-table td { padding: 12px; text-align: left; border: 1px solid #d1d5db; font-size: 10px; }
-                            .pdf-table th { font-weight: 700; text-transform: uppercase; }
-                            .pdf-table tbody tr:nth-child(even) { background: #f0fdf4; }
-                            .pdf-total { background: linear-gradient(135deg, #10b981 0%, #047857 100%); color: white; padding: 20px; border-radius: 8px; margin-top: 20px; display: flex; justify-content: space-between; align-items: center; }
-                            .pdf-total-label { font-size: 18px; font-weight: 700; font-family: 'Poppins', sans-serif; }
-                            .pdf-total-value { font-size: 28px; font-weight: 800; font-family: 'Poppins', sans-serif; }
-                        </style>
-                        <div class="pdf-header">
-                            <div class="pdf-title"><i class="fas fa-receipt"></i> RELATÓRIO DE DESPESAS</div>
-                            <div class="pdf-month">Período Completo</div>
-                            <div class="pdf-subtitle">Análise Detalhada de Gastos - Recanto KauDan</div>
-                            <div class="pdf-date">Gerado em: ${new Date().toLocaleString('pt-BR', { dateStyle: 'full', timeStyle: 'short' })}</div>
+            const metricsCards = pageNum === 1 ? `
+                <div style="display: grid; grid-template-columns: repeat(${Math.min(Object.keys(categoryTotals).length, 4)}, 1fr); gap: 12px; margin-bottom: 14px;">
+                    ${Object.keys(categoryTotals).slice(0, 4).map(catKey => `
+                        <div style="background: linear-gradient(135deg, ${colors.primary}15 0%, ${colors.primary}08 100%); border: 2px solid ${colors.light}; border-radius: 8px; padding: 12px; text-align: center; box-shadow: 0 2px 6px rgba(245, 158, 11, 0.1);">
+                            <div style="color: ${colors.primary}; font-size: 22px; margin-bottom: 4px;"><i class="fas fa-${categories[catKey].icon}"></i></div>
+                            <div style="color: #64748b; font-size: 9px; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.3px;">${categories[catKey].name.substring(0, 12)}</div>
+                            <div style="color: ${colors.primary}; font-size: 14px; font-weight: 900;">${formatCurrency(categoryTotals[catKey]).replace('R$', '').trim()}</div>
                         </div>
-                        <div class="pdf-content">
-                            <div class="section-title"><i class="fas fa-layer-group"></i> Resumo por Categoria</div>
-                            <div class="category-grid">
-                                ${Object.keys(categoryTotals).map(catKey => `
-                                    <div class="cat-card">
-                                        <div class="cat-label"><i class="${categories[catKey].icon}"></i> ${categories[catKey].name}</div>
-                                        <div class="cat-value">${formatCurrency(categoryTotals[catKey])}</div>
-                                    </div>
+                    `).join('')}
+                </div>
+            ` : '';
+
+            pagesHTML += `
+                <div class="pdf-page" style="width: 210mm; height: 297mm; background: #f8fafc; color: #111827; font-family: 'Segoe UI', -apple-system, sans-serif; padding: 0; margin-bottom: 20px; display: flex; flex-direction: column;">
+                    ${base.getHeader()}
+                    <div style="padding: 14px 24px; flex: 1; display: flex; flex-direction: column; gap: 10px; overflow-y: auto;">
+                        ${metricsCards}
+                        <div style="border-bottom: 3px solid ${colors.primary}; padding-bottom: 6px;">
+                            <div style="font-size: 13px; font-weight: 900; color: #0f172a; display: flex; align-items: center; gap: 8px;"><i class="fas fa-list-check"></i> ${pageNum > 1 ? 'PARTE ' + pageNum + ' - ' : ''}DESPESAS</div>
+                        </div>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 10px; background: white; border-radius: 6px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                            <thead>
+                                <tr style="background: linear-gradient(135deg, ${colors.primary} 0%, ${colors.dark} 100%); color: white; height: 28px;">
+                                    <th style="padding: 7px 8px; text-align: center; font-weight: 800; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; border-right: 1px solid rgba(255,255,255,0.2);">Categoria</th>
+                                    <th style="padding: 7px 8px; text-align: center; font-weight: 800; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; border-right: 1px solid rgba(255,255,255,0.2);">Data</th>
+                                    <th style="padding: 7px 8px; text-align: center; font-weight: 800; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; border-right: 1px solid rgba(255,255,255,0.2);">Observação</th>
+                                    <th style="padding: 7px 8px; text-align: center; font-weight: 800; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px;">Valor</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${currentPage.map((e, idx) => `
+                                    <tr style="border-bottom: 2px solid ${idx === currentPage.length - 1 ? colors.primary : '#e5e7eb'}; background: ${idx % 2 === 0 ? '#ffffff' : colors.bg}; height: 24px;">
+                                        <td style="padding: 6px 8px; font-weight: 700; color: ${colors.primary}; text-align: center; border-right: 1px solid #e5e7eb; font-size: 10px;">${categories[e.category].name.substring(0, 12)}</td>
+                                        <td style="padding: 6px 8px; text-align: center; color: #475569; font-weight: 600; border-right: 1px solid #e5e7eb; font-size: 10px;">${formatDate(e.date)}</td>
+                                        <td style="padding: 6px 8px; text-align: center; color: #64748b; font-size: 10px; border-right: 1px solid #e5e7eb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${e.note ? e.note.substring(0, 18) : '-'}</td>
+                                        <td style="padding: 6px 8px; text-align: center; font-weight: 900; color: ${colors.primary}; background: ${idx % 2 === 0 ? '#fef3c7' : '#fde68a'}; font-size: 10px;">${formatCurrency(e.amount).replace('R$', '').trim()}</td>
+                                    </tr>
                                 `).join('')}
-                            </div>
-                            <div class="section-title"><i class="fas fa-list"></i> Detalhamento Completo</div>
-                            <table class="pdf-table">
-                                <thead>
-                                    <tr>
-                                        <th><i class="fas fa-folder"></i> Categoria</th>
-                                        <th><i class="fas fa-calendar-alt"></i> Data</th>
-                                        <th><i class="fas fa-note-sticky"></i> Observação</th>
-                                        <th style="text-align: right;"><i class="fas fa-dollar-sign"></i> Valor</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${[...expenses].sort((a, b) => new Date(b.date) - new Date(a.date)).map(e => `
-                                        <tr>
-                                            <td><strong>${categories[e.category].name}</strong></td>
-                                            <td>${formatDate(e.date)}</td>
-                                            <td>${e.note || '-'}</td>
-                                            <td style="text-align: right; font-weight: 800; color: #10b981;">${formatCurrency(e.amount)}</td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                            <div class="pdf-total">
-                                <span class="pdf-total-label"><i class="fas fa-sum"></i> Total de Despesas</span>
-                                <span class="pdf-total-value">${formatCurrency(totalDespesas)}</span>
-                            </div>
-                        </div>
+                            </tbody>
+                        </table>
                     </div>
-                `;
+                    ${base.getFooter(pageNum, totalPages, `Total: ${formatCurrency(totalDespesas)}`)}
+                </div>
+            `;
+            currentPage = [];
         }
+    });
 
-        function generateClientesPageHTML() {
-            const clientRentals = {};
+    return pagesHTML;
+}
 
-            rentals.forEach(r => {
-                clientRentals[r.clientName] = (clientRentals[r.clientName] || 0) + r.total;
-            });
+function generateClientesPageHTML() {
+    const clientRentals = {};
+    rentals.forEach(r => {
+        clientRentals[r.clientName] = (clientRentals[r.clientName] || 0) + r.total;
+    });
 
-            return `
-                    <div class="pdf-page" style="width: 210mm; background: white; color: #111827; font-family: 'Inter', sans-serif; padding: 0; margin-bottom: 20px;">
-                        <style>
-                            .pdf-header { background: linear-gradient(135deg, #10b981 0%, #047857 100%); color: white; padding: 30px 40px; width: 100%; }
-                            .pdf-title { font-size: 36px; font-weight: 900; margin-bottom: 5px; display: flex; align-items: center; gap: 15px; font-family: 'Poppins', sans-serif; }
-                            .pdf-month { font-size: 22px; font-weight: 700; margin-bottom: 8px; opacity: 0.95; font-family: 'Poppins', sans-serif; }
-                            .pdf-subtitle { font-size: 14px; opacity: 0.9; margin-bottom: 3px; }
-                            .pdf-date { font-size: 11px; opacity: 0.8; margin-top: 8px; }
-                            .pdf-content { padding: 25px 40px; position: relative; }
-                            .section-title { font-size: 14px; font-weight: 800; color: #0f172a; margin: 20px 0 12px; padding-bottom: 6px; border-bottom: 2.5px solid #10b981; display: flex; align-items: center; gap: 8px; font-family: 'Poppins', sans-serif; }
-                            .pdf-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                            .pdf-table thead { background: #10b981; color: white; }
-                            .pdf-table th, .pdf-table td { padding: 12px; text-align: left; border: 1px solid #d1d5db; font-size: 10px; }
-                            .pdf-table th { font-weight: 700; text-transform: uppercase; }
-                            .pdf-table tbody tr:nth-child(even) { background: #f0fdf4; }
-                        </style>
-                        <div class="pdf-header">
-                            <div class="pdf-title"><i class="fas fa-address-book"></i> RELATÓRIO DE CLIENTES</div>
-                            <div class="pdf-month">Carteira Ativa</div>
-                            <div class="pdf-subtitle">Gestão de Clientes - Recanto KauDan</div>
-                            <div class="pdf-date">Gerado em: ${new Date().toLocaleString('pt-BR', { dateStyle: 'full', timeStyle: 'short' })}</div>
+    const colors = PDF_COLORS.clientes;
+    const base = getPDFPageBase('clientes', 'CLIENTES', 'Carteira Ativa', 'address-book');
+
+    if (clients.length === 0) {
+        return base.getEmptyState();
+    }
+
+    let pagesHTML = '';
+    let currentPage = [];
+    const rowsPerPage = 25;
+
+    clients.forEach((client, idx) => {
+        currentPage.push(client);
+        if (currentPage.length === rowsPerPage || idx === clients.length - 1) {
+            const pageNum = Math.floor(idx / rowsPerPage) + 1;
+            const totalPages = Math.ceil(clients.length / rowsPerPage);
+
+            pagesHTML += `
+                <div class="pdf-page" style="width: 210mm; height: 297mm; background: #f8fafc; color: #111827; font-family: 'Segoe UI', -apple-system, sans-serif; padding: 0; margin-bottom: 20px; display: flex; flex-direction: column;">
+                    ${base.getHeader()}
+                    <div style="padding: 14px 24px; flex: 1; display: flex; flex-direction: column; gap: 10px; overflow-y: auto;">
+                        ${pageNum === 1 ? `
+                            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px;">
+                                <div style="background: linear-gradient(135deg, ${colors.primary}15 0%, ${colors.primary}08 100%); border: 2px solid ${colors.light}; border-radius: 8px; padding: 12px; text-align: center; box-shadow: 0 2px 6px rgba(59, 130, 246, 0.1);">
+                                    <div style="color: ${colors.primary}; font-size: 22px; margin-bottom: 4px;"><i class="fas fa-users"></i></div>
+                                    <div style="color: #64748b; font-size: 9px; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.3px;">Total Clientes</div>
+                                    <div style="color: ${colors.primary}; font-size: 14px; font-weight: 900;">${clients.length}</div>
+                                </div>
+                                <div style="background: linear-gradient(135deg, #f59e0b15 0%, #f59e0b08 100%); border: 2px solid #fef08a; border-radius: 8px; padding: 12px; text-align: center; box-shadow: 0 2px 6px rgba(245, 158, 11, 0.1);">
+                                    <div style="color: #f59e0b; font-size: 22px; margin-bottom: 4px;"><i class="fas fa-home"></i></div>
+                                    <div style="color: #64748b; font-size: 9px; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.3px;">Locações</div>
+                                    <div style="color: #f59e0b; font-size: 14px; font-weight: 900;">${rentals.length}</div>
+                                </div>
+                                <div style="background: linear-gradient(135deg, #a855f715 0%, #a855f708 100%); border: 2px solid #e9d5ff; border-radius: 8px; padding: 12px; text-align: center; box-shadow: 0 2px 6px rgba(168, 85, 247, 0.1);">
+                                    <div style="color: #a855f7; font-size: 22px; margin-bottom: 4px;"><i class="fas fa-money-bill-wave"></i></div>
+                                    <div style="color: #64748b; font-size: 9px; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.3px;">Receita Total</div>
+                                    <div style="color: #a855f7; font-size: 14px; font-weight: 900;">${formatCurrency(calculateTotalRevenue()).replace('R$', '').trim()}</div>
+                                </div>
+                            </div>
+                        ` : ''}
+                        <div style="border-bottom: 3px solid ${colors.primary}; padding-bottom: 6px;">
+                            <div style="font-size: 13px; font-weight: 900; color: #0f172a; display: flex; align-items: center; gap: 8px;"><i class="fas fa-list-check"></i> ${pageNum > 1 ? 'PARTE ' + pageNum + ' - ' : ''}CLIENTES</div>
                         </div>
-                        <div class="pdf-content">
-                            <div class="section-title"><i class="fas fa-users"></i> Lista Completa de Clientes</div>
-                            <table class="pdf-table">
-                                <thead>
-                                    <tr>
-                                        <th><i class="fas fa-user"></i> Nome</th>
-                                        <th><i class="fas fa-envelope"></i> Email</th>
-                                        <th><i class="fas fa-id-card"></i> CPF</th>
-                                        <th><i class="fas fa-phone"></i> Telefone</th>
-                                        <th style="text-align: right;"><i class="fas fa-wallet"></i> Total Gasto</th>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 10px; background: white; border-radius: 6px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                            <thead>
+                                <tr style="background: linear-gradient(135deg, ${colors.primary} 0%, ${colors.dark} 100%); color: white; height: 28px;">
+                                    <th style="padding: 7px 8px; text-align: center; font-weight: 800; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; border-right: 1px solid rgba(255,255,255,0.2);">Nome</th>
+                                    <th style="padding: 7px 8px; text-align: center; font-weight: 800; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; border-right: 1px solid rgba(255,255,255,0.2);">Email</th>
+                                    <th style="padding: 7px 8px; text-align: center; font-weight: 800; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; border-right: 1px solid rgba(255,255,255,0.2);">CPF</th>
+                                    <th style="padding: 7px 8px; text-align: center; font-weight: 800; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; border-right: 1px solid rgba(255,255,255,0.2);">Tel.</th>
+                                    <th style="padding: 7px 8px; text-align: center; font-weight: 800; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px;">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${currentPage.map((c, idx) => `
+                                    <tr style="border-bottom: 2px solid ${idx === currentPage.length - 1 ? colors.primary : '#e5e7eb'}; background: ${idx % 2 === 0 ? '#ffffff' : colors.bg}; height: 24px;">
+                                        <td style="padding: 6px 8px; font-weight: 700; color: ${colors.primary}; text-align: center; border-right: 1px solid #e5e7eb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px;">${c.name.substring(0, 15)}</td>
+                                        <td style="padding: 6px 8px; text-align: center; color: #475569; border-right: 1px solid #e5e7eb; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${c.email ? c.email.substring(0, 14) : '-'}</td>
+                                        <td style="padding: 6px 8px; text-align: center; color: #475569; font-size: 10px; border-right: 1px solid #e5e7eb;">${c.cpf ? c.cpf.substring(0, 5) + '...' : '-'}</td>
+                                        <td style="padding: 6px 8px; text-align: center; color: #475569; font-size: 10px; border-right: 1px solid #e5e7eb;">${c.phone ? c.phone.substring(0, 10) : '-'}</td>
+                                        <td style="padding: 6px 8px; text-align: center; font-weight: 900; color: ${colors.primary}; background: ${idx % 2 === 0 ? colors.bg : '#e0e7ff'}; font-size: 10px;">${formatCurrency(clientRentals[c.name] || 0).replace('R$', '').trim()}</td>
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    ${clients.map(c => `
-                                        <tr>
-                                            <td><strong>${c.name}</strong></td>
-                                            <td>${c.email || '-'}</td>
-                                            <td>${c.cpf || '-'}</td>
-                                            <td>${c.phone || '-'}</td>
-                                            <td style="text-align: right; font-weight: 800; color: #10b981;">${formatCurrency(clientRentals[c.name] || 0)}</td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                        </div>
+                                `).join('')}
+                            </tbody>
+                        </table>
                     </div>
-                `;
+                    ${base.getFooter(pageNum, totalPages)}
+                </div>
+            `;
+            currentPage = [];
         }
+    });
+
+    return pagesHTML;
+}
+
 
 
         // ===== FORM HANDLERS =====
