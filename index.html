@@ -12,6 +12,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdn.tailwindcss.com" type="text/javascript"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -415,8 +418,29 @@
             </form>
         </div>
     </div>
-    <script>// ===== GLOBAL STATE =====
+    <script>
+        // Firebase Config
+        const firebaseConfig = {
+            apiKey: "AIzaSyCrZhLisPAGQerW4Ziuk3wyEE3I23gFyyQ",
+            authDomain: "kaudan-5d2d3.firebaseapp.com",
+            databaseURL: "https://kaudan-5d2d3-default-rtdb.firebaseio.com",
+            projectId: "kaudan-5d2d3",
+            storageBucket: "kaudan-5d2d3.firebasestorage.app",
+            messagingSenderId: "263883565895",
+            appId: "1:263883565895:web:354ccf8d8216e4e5e9ba62",
+            measurementId: "G-EE71PP5DS9"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+
+        // Realtime Database
+        const db = firebase.database();
+
+
+        // ===== GLOBAL STATE =====
         let currentUser = null;
+        let currentUserId = null;
         let currentPage = 'dashboard';
         let selectedDays = [];
         let rentals = [];
@@ -437,7 +461,9 @@
             defaultDailyRate: 200
         };
 
+
         const categories = {
+            internet: { name: 'Internet', icon: 'fas fa-wifi' },
             piscineiro: { name: 'Piscineiro', icon: 'fas fa-swimmer' },
             faxineira: { name: 'Faxineira', icon: 'fas fa-broom' },
             servico: { name: 'Serviço Geral', icon: 'fas fa-wrench' },
@@ -448,13 +474,52 @@
             outros: { name: 'Outros', icon: 'fas fa-box' }
         };
 
+
+
+
         // ===== UTILITIES =====
         function formatCurrency(value) {
-            return new Intl.NumberFormat('pt-BR', {
-                style: 'currency',
-                currency: 'BRL'
-            }).format(value);
+            if (!value || isNaN(value)) return 'R$ 0,00';
+
+            const num = parseFloat(value);
+
+            if (num >= 1000000) {
+                return 'R$ ' + (num / 1000000).toFixed(2).replace('.', ',') + 'M';
+            } else if (num >= 1000) {
+                return 'R$ ' + (num / 1000).toFixed(2).replace('.', ',') + 'K';
+            }
+
+            return 'R$ ' + num.toFixed(2).replace('.', ',');
         }
+
+        // Exemplos de uso:
+        // formatCurrency(1500) → "R$ 1,50K"
+        // formatCurrency(50000) → "R$ 50,00K"
+        // formatCurrency(1500000) → "R$ 1,50M"
+        // formatCurrency(750) → "R$ 750,00"
+
+
+        function formatCurrency(value, options = {}) {
+            if (!value || isNaN(value)) return 'R$ 0,00';
+
+            const num = parseFloat(value);
+            const useAbreviation = options.useAbreviation !== false; // true por padrão
+            const decimals = options.decimals !== undefined ? options.decimals : 2;
+
+            if (!useAbreviation) {
+                return 'R$ ' + num.toFixed(decimals).replace('.', ',');
+            }
+
+            if (num >= 1000000) {
+                return 'R$ ' + (num / 1000000).toFixed(decimals).replace('.', ',') + 'M';
+            } else if (num >= 1000) {
+                return 'R$ ' + (num / 1000).toFixed(decimals).replace('.', ',') + 'K';
+            }
+
+            return 'R$ ' + num.toFixed(decimals).replace('.', ',');
+        }
+
+
 
         function formatDate(dateStr) {
             const date = new Date(dateStr + 'T00:00:00');
@@ -467,14 +532,32 @@
 
         // ===== AUTHENTICATION =====
         function initAuth() {
-            const stored = localStorage.getItem('kaudan_user');
-            if (stored) {
-                currentUser = JSON.parse(stored);
-                showApp();
+            const savedUserId = localStorage.getItem("currentUserId");
+
+            if (savedUserId) {
+                currentUserId = savedUserId;
+
+                db.ref("users/" + currentUserId).once("value", (snapshot) => {
+                    if (snapshot.exists()) {
+                        currentUser = snapshot.val();
+                        document.getElementById('topBarUser').textContent = currentUser.username;
+                        showApp();
+                        loadData();
+                        syncDataFromFirebase();
+                    } else {
+                        currentUserId = null;
+                        currentUser = null;
+                        localStorage.removeItem("currentUserId");
+                        showLogin();
+                    }
+                });
             } else {
+                currentUserId = null;
+                currentUser = null;
                 showLogin();
             }
         }
+
 
         function showLogin() {
             document.getElementById('loginContainer').style.display = 'flex';
@@ -485,26 +568,159 @@
         function showApp() {
             document.getElementById('loginContainer').style.display = 'none';
             document.getElementById('app').classList.add('show');
-            document.getElementById('topBarUser').textContent = currentUser.username;
             init();
         }
 
         function handleLogin(e) {
             e.preventDefault();
-            const user = document.getElementById('loginUser').value;
+
+            const email = document.getElementById('loginUser').value;
             const pass = document.getElementById('loginPassword').value;
             const errorEl = document.getElementById('loginError');
 
-            if (user === 'danilo' && pass === '123') {
-                currentUser = { username: user, createdAt: new Date().toISOString() };
-                localStorage.setItem('kaudan_user', JSON.stringify(currentUser));
+            // Login fixo
+            if (email === "danilo" && pass === "123") {
+                currentUserId = "defaultUser";
+                currentUser = { username: "danilo", uid: currentUserId };
+
+                localStorage.setItem("currentUserId", currentUserId);
+
                 document.getElementById('loginForm').reset();
                 errorEl.classList.remove('show');
+                document.getElementById('topBarUser').textContent = currentUser.username;
+
+                showToast('Login realizado com sucesso!', 'success', 2000);
                 showApp();
+                loadData();
+                syncDataFromFirebase();
             } else {
                 errorEl.textContent = 'Usuário ou senha incorretos!';
                 errorEl.classList.add('show');
+                showToast('Usuário ou senha incorretos!', 'error', 3000);
             }
+        }
+
+
+        // ===== FIREBASE DATA FUNCTIONS =====
+        function loadSettings() {
+            if (!currentUserId) return;
+            db.ref(`users/${currentUserId}/settings`).once('value', (snapshot) => {
+                if (snapshot.exists()) {
+                    settings = { ...settings, ...snapshot.val() };
+                } else {
+                    saveSettings();
+                }
+            });
+        }
+
+        function saveSettings() {
+            if (!currentUserId) return;
+            db.ref(`users/${currentUserId}/settings`).set(settings)
+                .catch((error) => {
+                    showToast('Erro ao salvar configurações: ' + error.message, 'error');
+                });
+        }
+
+        function loadData() {
+            if (!currentUserId) return;
+
+            db.ref(`users/${currentUserId}/rentals`).once('value', (snapshot) => {
+                rentals = snapshot.val() ? Object.values(snapshot.val()) : [];
+            });
+
+            db.ref(`users/${currentUserId}/expenses`).once('value', (snapshot) => {
+                expenses = snapshot.val() ? Object.values(snapshot.val()) : [];
+            });
+
+            db.ref(`users/${currentUserId}/reserves`).once('value', (snapshot) => {
+                reserves = snapshot.val() ? Object.values(snapshot.val()) : [];
+            });
+
+            db.ref(`users/${currentUserId}/clients`).once('value', (snapshot) => {
+                clients = snapshot.val() ? Object.values(snapshot.val()) : [];
+            });
+
+            db.ref(`users/${currentUserId}/notes`).once('value', (snapshot) => {
+                notes = snapshot.val() ? Object.values(snapshot.val()) : [];
+            });
+
+            loadSettings();
+        }
+
+        function saveData() {
+            if (!currentUserId) return;
+            saveToFirebase('rentals', rentals);
+            saveToFirebase('expenses', expenses);
+            saveToFirebase('reserves', reserves);
+            saveToFirebase('clients', clients);
+            saveToFirebase('notes', notes);
+        }
+
+        function syncDataFromFirebase() {
+            if (!currentUserId) return;
+
+            db.ref(`users/${currentUserId}/rentals`).on('value', (snapshot) => {
+                rentals = snapshot.val() ? Object.values(snapshot.val()) : [];
+                if (currentPage === 'dashboard' || currentPage === 'calendar' || currentPage === 'rentals') {
+                    renderPage();
+                }
+            });
+
+            db.ref(`users/${currentUserId}/expenses`).on('value', (snapshot) => {
+                expenses = snapshot.val() ? Object.values(snapshot.val()) : [];
+                if (currentPage === 'dashboard' || currentPage === 'expenses') {
+                    renderPage();
+                }
+            });
+
+            db.ref(`users/${currentUserId}/reserves`).on('value', (snapshot) => {
+                reserves = snapshot.val() ? Object.values(snapshot.val()) : [];
+                if (currentPage === 'dashboard' || currentPage === 'reserves') {
+                    renderPage();
+                }
+            });
+
+            db.ref(`users/${currentUserId}/clients`).on('value', (snapshot) => {
+                clients = snapshot.val() ? Object.values(snapshot.val()) : [];
+                if (currentPage === 'clients') {
+                    renderPage();
+                }
+            });
+
+            db.ref(`users/${currentUserId}/notes`).on('value', (snapshot) => {
+                notes = snapshot.val() ? Object.values(snapshot.val()) : [];
+                if (currentPage === 'notes') {
+                    renderPage();
+                }
+            });
+        }
+
+        function saveToFirebase(dataType, data) {
+            if (!currentUserId) return;
+            const firebaseData = {};
+            data.forEach((item, index) => {
+                firebaseData[item.id || index] = item;
+            });
+            db.ref(`users/${currentUserId}/${dataType}`).set(firebaseData)
+                .catch((error) => {
+                    showToast('Erro ao salvar ' + dataType + ': ' + error.message, 'error');
+                });
+        }
+
+        function updateToFirebase(dataType, id, data) {
+            if (!currentUserId) return;
+            db.ref(`users/${currentUserId}/${dataType}/${id}`).update(data)
+                .catch((error) => {
+                    showToast('Erro ao atualizar: ' + error.message, 'error');
+                });
+        }
+
+        function deleteFromFirebase(dataType, id) {
+            if (!currentUserId) return;
+            db.ref(`users/${currentUserId}/${dataType}/${id}`).remove()
+                .catch((error) => {
+                    showToast('Erro ao deletar: ' + error.message, 'error');
+                });
         }
 
         // Sistema de notificações Toast
@@ -698,19 +914,24 @@
                 'Sair do Sistema',
                 'Deseja realmente sair do sistema?',
                 () => {
-                    currentUser = null;
-                    localStorage.removeItem('kaudan_user');
-                    showToast('Você saiu do sistema com sucesso!', 'success', 2000);
-                    setTimeout(() => {
-                        showLogin();
-                    }, 500);
+                    auth.signOut()
+                        .then(() => {
+                            currentUser = null;
+                            currentUserId = null;
+                            showToast('Você saiu do sistema com sucesso!', 'success', 2000);
+                            setTimeout(() => {
+                                showLogin();
+                            }, 500);
+                        })
+                        .catch((error) => {
+                            showToast('Erro ao sair: ' + error.message, 'error');
+                        });
                 },
                 () => {
                     showToast('Saída cancelada', 'info', 1500);
                 }
             );
         }
-
 
 
         // ===== INIT =====
@@ -776,34 +997,73 @@
 
         // ===== DATA MANAGEMENT =====
         function loadSettings() {
-            const saved = localStorage.getItem('kaudan_settings');
+            const saved = localStorage.getItem('rentalflow_settings');
             if (saved) {
-                settings = JSON.parse(saved);
+                settings = { ...settings, ...JSON.parse(saved) };
             }
         }
 
         function saveSettings() {
-            localStorage.setItem('kaudan_settings', JSON.stringify(settings));
+            localStorage.setItem('rentalflow_settings', JSON.stringify(settings));
         }
 
         function loadData() {
-            rentals = JSON.parse(localStorage.getItem('kaudan_rentals') || '[]');
-            expenses = JSON.parse(localStorage.getItem('kaudan_expenses') || '[]');
-            reserves = JSON.parse(localStorage.getItem('kaudan_reserves') || '[]');
-            clients = JSON.parse(localStorage.getItem('kaudan_clients') || '[]');
-            notes = JSON.parse(localStorage.getItem('kaudan_notes') || '[]');
+            const savedRentals = localStorage.getItem('rentalflow_rentals');
+            rentals = savedRentals ? Object.values(JSON.parse(savedRentals)) : [];
+
+            const savedExpenses = localStorage.getItem('rentalflow_expenses');
+            expenses = savedExpenses ? Object.values(JSON.parse(savedExpenses)) : [];
+
+            const savedReserves = localStorage.getItem('rentalflow_reserves');
+            reserves = savedReserves ? Object.values(JSON.parse(savedReserves)) : [];
+
+            const savedClients = localStorage.getItem('rentalflow_clients');
+            clients = savedClients ? Object.values(JSON.parse(savedClients)) : [];
+
+            const savedNotes = localStorage.getItem('rentalflow_notes');
+            notes = savedNotes ? Object.values(JSON.parse(savedNotes)) : [];
         }
 
         function saveData() {
-            localStorage.setItem('kaudan_rentals', JSON.stringify(rentals));
-            localStorage.setItem('kaudan_expenses', JSON.stringify(expenses));
-            localStorage.setItem('kaudan_reserves', JSON.stringify(reserves));
-            localStorage.setItem('kaudan_clients', JSON.stringify(clients));
-            localStorage.setItem('kaudan_notes', JSON.stringify(notes));
+            saveToFirebase('rentals', rentals);
+            saveToFirebase('expenses', expenses);
+            saveToFirebase('reserves', reserves);
+            saveToFirebase('clients', clients);
+            saveToFirebase('notes', notes);
         }
 
-        // ===== NAVIGATION =====//
+        function saveToFirebase(dataType, data) {
+            if (!data || !Array.isArray(data)) {
+                data = [];
+            }
 
+            const firebaseData = {};
+            data.forEach((item, index) => {
+                firebaseData[item.id || index] = item;
+            });
+
+            localStorage.setItem('rentalflow_' + dataType, JSON.stringify(firebaseData));
+        }
+
+        function updateToFirebase(dataType, id, dataUpdate) {
+            const key = 'rentalflow_' + dataType;
+            const saved = localStorage.getItem(key);
+            const firebaseData = saved ? JSON.parse(saved) : {};
+
+            firebaseData[id] = { ...firebaseData[id], ...dataUpdate };
+            localStorage.setItem(key, JSON.stringify(firebaseData));
+        }
+
+        function deleteFromFirebase(dataType, id) {
+            const key = 'rentalflow_' + dataType;
+            const saved = localStorage.getItem(key);
+            const firebaseData = saved ? JSON.parse(saved) : {};
+
+            delete firebaseData[id];
+            localStorage.setItem(key, JSON.stringify(firebaseData));
+        }
+
+        // ===== NAVIGATION =====
         function navigatePage(page) {
             // Update desktop sidebar
             document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
@@ -821,6 +1081,7 @@
             selectedDays = [];
             renderPage();
         }
+
         function toggleBottomMenu() {
             document.getElementById('bottomMenu').classList.toggle('show');
         }
@@ -849,9 +1110,6 @@
                 });
             });
         }
-
-
-
 
         function renderPage() {
             const content = document.getElementById('content');
@@ -912,7 +1170,65 @@
             content.innerHTML = page.render();
         }
 
+
+        // ===== CORE DATA MANAGEMENT =====
+        let syncListeners = [];
+
+        function addSyncListener(callback) {
+            syncListeners.push(callback);
+        }
+
+        function triggerSync(type, data) {
+            syncListeners.forEach(cb => cb(type, data));
+            saveAllData();
+        }
+
+        function saveAllData() {
+            saveToFirebase('rentals', rentals);
+            saveToFirebase('reserves', reserves);
+            saveToFirebase('expenses', expenses);
+            saveToFirebase('clients', clients);
+            saveSettings();
+        }
+
         // ===== DASHBOARD =====
+        function calculateCapital() {
+            const totalRental = rentals.reduce((sum, r) => sum + r.total, 0);
+            const totalReserve = reserves.reduce((sum, r) => sum + (r.dailyRate * r.days), 0);
+            const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+            return settings.initialCapital + totalRental - totalExpenses;
+        }
+
+        function calculateMonthlyRevenue() {
+            const currentMonth = new Date().toISOString().slice(0, 7);
+            return rentals
+                .filter(r => r.startDate.startsWith(currentMonth) || r.endDate.startsWith(currentMonth))
+                .reduce((sum, r) => sum + r.total, 0);
+        }
+
+        function calculateMonthlyExpenses() {
+            const currentMonth = new Date().toISOString().slice(0, 7);
+            return expenses
+                .filter(e => e.date.startsWith(currentMonth))
+                .reduce((sum, e) => sum + e.amount, 0);
+        }
+
+        function calculateRentedDays() {
+            const currentMonth = new Date().toISOString().slice(0, 7);
+            return rentals
+                .filter(r => r.startDate.startsWith(currentMonth) || r.endDate.startsWith(currentMonth))
+                .reduce((sum, r) => sum + r.days, 0);
+        }
+
+        function getNextRental() {
+            const now = new Date();
+            const upcomingRentals = rentals
+                .filter(r => new Date(r.startDate) >= now)
+                .sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+
+            return upcomingRentals[0] || null;
+        }
+
         function formatCurrencyCompact(value) {
             if (value >= 1000000000) {
                 return 'R$ ' + (value / 1000000000).toFixed(1).replace('.0', '') + 'B';
@@ -934,44 +1250,44 @@
             const nextRental = getNextRental();
 
             const html = `
-                <div class="stats-grid">
-                    <div class="stat-box stat-box-clickable" data-stat="capital" style="cursor: pointer;" title="${formatCurrency(capital)}">
-                        <div class="stat-label"><i class="fas fa-wallet"></i> Capital Atual</div>
-                        <div class="stat-value" style="word-break: break-word; overflow-wrap: break-word;">${formatCurrencyCompact(capital)}</div>
-                        <div class="stat-change" style="word-break: break-word; overflow-wrap: break-word;" title="${formatCurrency(capital - settings.initialCapital)}">${capital >= settings.initialCapital ? '+' : ''}${formatCurrencyCompact(capital - settings.initialCapital)}</div>
-                    </div>
-                    <div class="stat-box stat-box-clickable" data-stat="revenue" style="cursor: pointer;" title="${formatCurrency(monthlyRevenue)}">
-                        <div class="stat-label"><i class="fas fa-arrow-trend-up"></i> Receita (Mês)</div>
-                        <div class="stat-value" style="word-break: break-word; overflow-wrap: break-word;">${formatCurrencyCompact(monthlyRevenue)}</div>
-                        <div class="stat-change">${rentals.filter(r => r.startDate.startsWith(new Date().toISOString().slice(0, 7))).length} locações</div>
-                    </div>
-                    <div class="stat-box stat-box-clickable" data-stat="expenses" style="cursor: pointer;" title="${formatCurrency(monthlyExpenses)}">
-                        <div class="stat-label"><i class="fas fa-arrow-trend-down"></i> Despesas (Mês)</div>
-                        <div class="stat-value" style="word-break: break-word; overflow-wrap: break-word;">${formatCurrencyCompact(monthlyExpenses)}</div>
-                        <div class="stat-change">${expenses.filter(e => e.date.startsWith(new Date().toISOString().slice(0, 7))).length} lançamentos</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-label"><i class="fas fa-calendar-days"></i> Dias Alugados</div>
-                        <div class="stat-value">${rentedDaysCount}</div>
-                        <div class="stat-change">este mês</div>
-                    </div>
-                </div>
+        <div class="stats-grid">
+            <div class="stat-box stat-box-clickable" data-stat="capital" style="cursor: pointer;" title="${formatCurrency(capital)}">
+                <div class="stat-label"><i class="fas fa-wallet"></i> Capital Atual</div>
+                <div class="stat-value" style="word-break: break-word; overflow-wrap: break-word;">${formatCurrencyCompact(capital)}</div>
+                <div class="stat-change" style="word-break: break-word; overflow-wrap: break-word;" title="${formatCurrency(capital - settings.initialCapital)}">${capital >= settings.initialCapital ? '+' : ''}${formatCurrencyCompact(capital - settings.initialCapital)}</div>
+            </div>
+            <div class="stat-box stat-box-clickable" data-stat="revenue" style="cursor: pointer;" title="${formatCurrency(monthlyRevenue)}">
+                <div class="stat-label"><i class="fas fa-arrow-trend-up"></i> Receita (Mês)</div>
+                <div class="stat-value" style="word-break: break-word; overflow-wrap: break-word;">${formatCurrencyCompact(monthlyRevenue)}</div>
+                <div class="stat-change">${rentals.filter(r => r.startDate.startsWith(new Date().toISOString().slice(0, 7))).length} locações</div>
+            </div>
+            <div class="stat-box stat-box-clickable" data-stat="expenses" style="cursor: pointer;" title="${formatCurrency(monthlyExpenses)}">
+                <div class="stat-label"><i class="fas fa-arrow-trend-down"></i> Despesas (Mês)</div>
+                <div class="stat-value" style="word-break: break-word; overflow-wrap: break-word;">${formatCurrencyCompact(monthlyExpenses)}</div>
+                <div class="stat-change">${expenses.filter(e => e.date.startsWith(new Date().toISOString().slice(0, 7))).length} lançamentos</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label"><i class="fas fa-calendar-days"></i> Dias Alugados</div>
+                <div class="stat-value">${rentedDaysCount}</div>
+                <div class="stat-change">este mês</div>
+            </div>
+        </div>
 
-                <div class="card">
-                    <div class="card-header">
-                        <div class="card-title"><i class="fas fa-key"></i> Próxima Locação</div>
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-key"></i> Próxima Locação</div>
+            </div>
+            ${nextRental ? `
+                <div style="padding: 0;">
+                    <div style="font-weight: 700; font-size: 1rem; margin-bottom: 0.5rem;">${nextRental.clientName}</div>
+                    <div style="color: var(--cinza-500); margin-bottom: 1rem;">
+                        ${formatDate(nextRental.startDate)} a ${formatDate(nextRental.endDate)} (${nextRental.days} dias)
                     </div>
-                    ${nextRental ? `
-                        <div style="padding: 0;">
-                            <div style="font-weight: 700; font-size: 1rem; margin-bottom: 0.5rem;">${nextRental.clientName}</div>
-                            <div style="color: var(--cinza-500); margin-bottom: 1rem;">
-                                ${formatDate(nextRental.startDate)} a ${formatDate(nextRental.endDate)} (${nextRental.days} dias)
-                            </div>
-                            <div style="font-size: 1.5rem; font-weight: 800; color: var(--verde-principal); word-break: break-word; overflow-wrap: break-word;" title="${formatCurrency(nextRental.total)}">${formatCurrencyCompact(nextRental.total)}</div>
-                        </div>
-                    ` : '<div class="empty-state"><i class="fas fa-inbox"></i><p>Nenhuma locação agendada</p></div>'}
+                    <div style="font-size: 1.5rem; font-weight: 800; color: var(--verde-principal); word-break: break-word; overflow-wrap: break-word;" title="${formatCurrency(nextRental.total)}">${formatCurrencyCompact(nextRental.total)}</div>
                 </div>
-            `;
+            ` : '<div class="empty-state"><i class="fas fa-inbox"></i><p>Nenhuma locação agendada</p></div>'}
+        </div>
+    `;
 
             setTimeout(() => {
                 document.querySelectorAll('.stat-box-clickable').forEach(box => {
@@ -999,21 +1315,21 @@
             let icon = '';
 
             if (statType === 'capital') {
-                title = 'Editar Capital Atual';
-                currentValue = capital;
-                helpText = 'Atualize o capital de acordo com sua situação financeira atual';
+                title = 'Editar Capital Inicial';
+                currentValue = settings.initialCapital;
+                helpText = 'Ajuste seu capital inicial. O capital atual é calculado automaticamente.';
                 icon = 'fa-wallet';
             }
             else if (statType === 'revenue') {
-                title = 'Editar Receita do Mês';
+                title = 'Receita do Mês';
                 currentValue = monthlyRevenue;
-                helpText = 'A receita é calculada automaticamente pelas locações';
+                helpText = 'A receita é calculada automaticamente pelas locações deste mês';
                 icon = 'fa-arrow-trend-up';
             }
             else if (statType === 'expenses') {
-                title = 'Editar Despesas do Mês';
+                title = 'Despesas do Mês';
                 currentValue = monthlyExpenses;
-                helpText = 'As despesas são calculadas automaticamente pelos lançamentos';
+                helpText = 'As despesas são calculadas automaticamente pelos lançamentos deste mês';
                 icon = 'fa-arrow-trend-down';
             }
 
@@ -1029,7 +1345,7 @@
 
         <div class="form-group">
             <label class="form-label">
-                Valor Atual: ${formatCurrency(currentValue)}
+                Valor ${statType === 'capital' ? 'Atual' : 'Calculado'}: ${formatCurrency(currentValue)}
             </label>
 
             <input
@@ -1037,14 +1353,14 @@
                 id="editStatInput"
                 class="form-input"
                 step="0.01"
-                value="${currentValue}"
+                value="${statType === 'capital' ? settings.initialCapital : currentValue}"
                 ${statType !== 'capital' ? 'disabled' : ''}
             >
         </div>
 
         <div class="modal-info">
             <i class="fas fa-info-circle"></i>
-            <span>Alterações manuais impactam diretamente o dashboard.</span>
+            <span>${statType === 'capital' ? 'Alterar o capital inicial reflete no dashboard.' : 'Este valor é calculado automaticamente.'}</span>
         </div>
 
         <div class="modal-buttons">
@@ -1075,8 +1391,13 @@
             }, 150);
         }
 
-
         function saveEditStat(statType) {
+            if (statType !== 'capital') {
+                showToast('Este valor é calculado automaticamente', 'warning');
+                closeModal();
+                return;
+            }
+
             const newValue = parseFloat(document.getElementById('editStatInput').value) || 0;
 
             if (newValue < 0) {
@@ -1084,21 +1405,14 @@
                 return;
             }
 
-            if (statType === 'capital') {
-                const oldCapital = calculateCapital();
-                settings.initialCapital = newValue;
-                saveSettings();
-                closeModal();
-                refreshDashboard();
-                showToast(` Capital atualizado de ${formatCurrency(oldCapital)} para ${formatCurrency(newValue)}`, 'success');
-            } else if (statType === 'revenue') {
-                showToast(' Receita é calculada automaticamente pelas locações', 'warning');
-                closeModal();
-            } else if (statType === 'expenses') {
-                showToast(' Despesas são calculadas automaticamente pelos lançamentos', 'warning');
-                closeModal();
-            }
+            const oldCapital = settings.initialCapital;
+            settings.initialCapital = newValue;
+            saveSettings();
+            closeModal();
+            refreshDashboard();
+            showToast(`✅ Capital inicial atualizado de ${formatCurrency(oldCapital)} para ${formatCurrency(newValue)}`, 'success');
         }
+
         function refreshDashboard() {
             const content = document.getElementById('content');
             if (!content) return;
@@ -1106,16 +1420,14 @@
             content.innerHTML = renderDashboard();
         }
 
-
-
         // ===== CALENDAR =====
-   function renderCalendar() {
-    const year = currentMonthYear.getFullYear();
-    const month = currentMonthYear.getMonth();
-    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-    const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
+        function renderCalendar() {
+            const year = currentMonthYear.getFullYear();
+            const month = currentMonthYear.getMonth();
+            const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+            const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
 
-    let html = `
+            let html = `
         <div class="card" style="width: 100%; max-width: 100%; padding: 0.5rem; box-sizing: border-box;">
             <div class="card-header" style="display: flex; align-items: center; justify-content: space-between; gap: 0.25rem; margin-bottom: 0.75rem; flex-wrap: nowrap;">
                 <button class="btn btn-secondary btn-small" onclick="prevMonth()" style="padding: 0.35rem; min-width: 32px; height: 32px; flex-shrink: 0;"><i class="fas fa-chevron-left" style="font-size: clamp(0.7rem, 2vw, 1rem);"></i></button>
@@ -1128,62 +1440,62 @@
             <div class="calendar-header" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.15rem; margin-bottom: 0.35rem; width: 100%; box-sizing: border-box;">
     `;
 
-    dayNames.forEach(day => {
-        html += `<div class="calendar-day-name" style="text-align: center; font-weight: 600; font-size: clamp(0.65rem, 2.2vw, 0.8rem); padding: 0.35rem 0.15rem; overflow: hidden; text-overflow: ellipsis;">${day}</div>`;
-    });
+            dayNames.forEach(day => {
+                html += `<div class="calendar-day-name" style="text-align: center; font-weight: 600; font-size: clamp(0.65rem, 2.2vw, 0.8rem); padding: 0.35rem 0.15rem; overflow: hidden; text-overflow: ellipsis;">${day}</div>`;
+            });
 
-    html += `</div><div class="calendar" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.15rem; width: 100%; box-sizing: border-box;">`;
+            html += `</div><div class="calendar" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.15rem; width: 100%; box-sizing: border-box;">`;
 
-    const firstDay = new Date(year, month, 1).getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
 
-    for (let i = 0; i < firstDay; i++) {
-        html += `<div style="aspect-ratio: 1; width: 100%;"></div>`;
-    }
+            for (let i = 0; i < firstDay; i++) {
+                html += `<div style="aspect-ratio: 1; width: 100%;"></div>`;
+            }
 
-    for (let day = 1; day <= daysInMonth; day++) {
-        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        const currentDate = new Date(dateStr + 'T00:00:00');
-        const isRented = isDateRented(dateStr);
-        const isReserved = isDateReserved(dateStr);
-        const isSelected = selectedDays.includes(dateStr);
-        const isPast = currentDate < today;
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const currentDate = new Date(dateStr + 'T00:00:00');
+                const isRented = isDateRented(dateStr);
+                const isReserved = isDateReserved(dateStr);
+                const isSelected = selectedDays.includes(dateStr);
+                const isPast = currentDate < today;
 
-        let classes = 'calendar-day';
-        let bgColor = '#ffffff';
-        let textColor = '#333333';
-        let cursor = 'pointer';
-        let opacity = '1';
+                let classes = 'calendar-day';
+                let bgColor = '#ffffff';
+                let textColor = '#333333';
+                let cursor = 'pointer';
+                let opacity = '1';
 
-        if (isPast) {
-            classes += ' disabled';
-            bgColor = '#f0f0f0';
-            textColor = '#999999';
-            cursor = 'not-allowed';
-            opacity = '0.6';
-        } else if (isRented) {
-            classes += ' rented';
-            bgColor = '#ff6b6b';
-            textColor = '#ffffff';
-            cursor = 'not-allowed';
-        } else if (isReserved) {
-            classes += ' reserved';
-            bgColor = '#ffa500';
-            textColor = '#ffffff';
-            cursor = 'not-allowed';
-        } else if (isSelected) {
-            classes += ' selected';
-            bgColor = '#4CAF50';
-            textColor = '#ffffff';
-        } else {
-            classes += ' available';
-            bgColor = '#e8f5e9';
-        }
+                if (isPast) {
+                    classes += ' disabled';
+                    bgColor = '#f0f0f0';
+                    textColor = '#999999';
+                    cursor = 'not-allowed';
+                    opacity = '0.6';
+                } else if (isRented) {
+                    classes += ' rented';
+                    bgColor = '#ff6b6b';
+                    textColor = '#ffffff';
+                    cursor = 'not-allowed';
+                } else if (isReserved) {
+                    classes += ' reserved';
+                    bgColor = '#ffa500';
+                    textColor = '#ffffff';
+                    cursor = 'not-allowed';
+                } else if (isSelected) {
+                    classes += ' selected';
+                    bgColor = '#4CAF50';
+                    textColor = '#ffffff';
+                } else {
+                    classes += ' available';
+                    bgColor = '#e8f5e9';
+                }
 
-        const onclick = isPast || isRented || isReserved ? '' : `onclick="toggleDay('${dateStr}')"`;
-        html += `
+                const onclick = isPast || isRented || isReserved ? '' : `onclick="toggleDay('${dateStr}')"`;
+                html += `
             <div class="${classes}" ${onclick} style="
                 aspect-ratio: 1;
                 width: 100%;
@@ -1206,16 +1518,16 @@
                 ${day}
             </div>
         `;
-    }
+            }
 
-    html += `</div></div>`;
+            html += `</div></div>`;
 
-    if (selectedDays.length > 0) {
-        const diasSelecionados = selectedDays.length;
-        const dataInicial = formatDate(selectedDays[0]);
-        const dataFinal = formatDate(selectedDays[selectedDays.length - 1]);
+            if (selectedDays.length > 0) {
+                const diasSelecionados = selectedDays.length;
+                const dataInicial = formatDate(selectedDays[0]);
+                const dataFinal = formatDate(selectedDays[selectedDays.length - 1]);
 
-        html += `
+                html += `
             <div class="card" style="width: 100%; max-width: 100%; padding: 0.75rem; box-sizing: border-box; margin-top: 0.75rem;">
                 <div class="card-header" style="margin-bottom: 0.75rem;">
                     <div class="card-title" style="margin-bottom: 0; font-size: clamp(0.85rem, 3.5vw, 1rem);"><i class="fas fa-check-circle"></i> Período Selecionado</div>
@@ -1236,11 +1548,10 @@
                 </div>
             </div>
         `;
-    }
+            }
 
-    return html;
-}
-
+            return html;
+        }
 
         function toggleDay(dateStr) {
             const index = selectedDays.indexOf(dateStr);
@@ -1288,8 +1599,8 @@
                 showToast('Selecione pelo menos um dia', 'warning', 2000);
                 return;
             }
+            populateClientSelect();
             openModal('rentalModal');
-            showToast('Modal de aluguel aberto', 'info', 1500);
         }
 
         function openReserveFlow() {
@@ -1297,35 +1608,201 @@
                 showToast('Selecione pelo menos um dia', 'warning', 2000);
                 return;
             }
+            populateClientSelect();
             openModal('reserveModal');
-            showToast('Modal de reserva aberto', 'info', 1500);
         }
+
         // ===== RENTALS =====
         function renderRentals() {
             if (rentals.length === 0) {
                 return `<div class="card"><div class="empty-state"><i class="fas fa-inbox"></i><p>Nenhuma locação registrada</p></div></div>`;
             }
 
-            let html = '<div class="card"><div class="table-container"><table><thead><tr><th><i class="fas fa-user"></i> Cliente</th><th><i class="fas fa-calendar"></i> Período</th><th style="text-align: center;"><i class="fas fa-calculator"></i> Dias</th><th style="text-align: right;"><i class="fas fa-tag"></i> Diária</th><th style="text-align: right;"><i class="fas fa-money-bill"></i> Total</th><th style="text-align: center;"><i class="fas fa-cog"></i> Status</th></tr></thead><tbody>';
+            const itemsPerPage = 10;
+            const currentPage = window.rentalCurrentPage || 1;
+            const sortedRentals = [...rentals].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            const totalPages = Math.ceil(sortedRentals.length / itemsPerPage);
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const paginatedRentals = sortedRentals.slice(startIndex, startIndex + itemsPerPage);
 
-            [...rentals].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).forEach(rental => {
+            let html = `
+        <style>
+            @media (max-width: 768px) {
+                .rentals-table-wrapper { display: none; }
+                .rentals-mobile-wrapper { display: block; }
+            }
+            @media (min-width: 769px) {
+                .rentals-table-wrapper { display: block; }
+                .rentals-mobile-wrapper { display: none; }
+            }
+        </style>
+
+        <!-- DESKTOP TABLE VIEW -->
+        <div class="rentals-table-wrapper">
+            <div class="card">
+                <div class="table-container">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background-color: var(--cinza-100);">
+                                <th style="padding: 1rem; text-align: left; font-weight: 700; color: var(--cinza-700); border-bottom: 2px solid var(--border-color); font-size: 0.85rem;"><i class="fas fa-user"></i> Cliente</th>
+                                <th style="padding: 1rem; text-align: left; font-weight: 700; color: var(--cinza-700); border-bottom: 2px solid var(--border-color); font-size: 0.85rem;"><i class="fas fa-calendar"></i> Período</th>
+                                <th style="padding: 1rem; text-align: center; font-weight: 700; color: var(--cinza-700); border-bottom: 2px solid var(--border-color); font-size: 0.85rem;"><i class="fas fa-calculator"></i> Dias</th>
+                                <th style="padding: 1rem; text-align: right; font-weight: 700; color: var(--cinza-700); border-bottom: 2px solid var(--border-color); font-size: 0.85rem;"><i class="fas fa-tag"></i> Diária</th>
+                                <th style="padding: 1rem; text-align: right; font-weight: 700; color: var(--cinza-700); border-bottom: 2px solid var(--border-color); font-size: 0.85rem;"><i class="fas fa-money-bill"></i> Total</th>
+                                <th style="padding: 1rem; text-align: center; font-weight: 700; color: var(--cinza-700); border-bottom: 2px solid var(--border-color); font-size: 0.85rem;"><i class="fas fa-info-circle"></i> Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+    `;
+
+            paginatedRentals.forEach(rental => {
                 const status = new Date(rental.endDate) < new Date() ? 'Finalizado' : 'Ativo';
+                const statusClass = status === 'Ativo' ? 'status-active' : 'status-finished';
+
                 html += `
-                    <tr onclick="openEditRentalModal('${rental.id}')">
-                        <td><strong>${rental.clientName}</strong></td>
-                        <td>${formatDate(rental.startDate)} a ${formatDate(rental.endDate)}</td>
-                        <td style="text-align: center; font-weight: 600;">${rental.days}</td>
-                        <td style="text-align: right; font-weight: 600;">${formatCurrency(rental.dailyRate)}</td>
-                        <td style="text-align: right; font-weight: 800; color: var(--verde-principal);">${formatCurrency(rental.total)}</td>
-                        <td style="text-align: center;">
-                            <span class="status-badge ${status === 'Ativo' ? 'status-active' : 'status-finished'}">${status}</span>
-                        </td>
-                    </tr>
-                `;
+            <tr onclick="openEditRentalModal('${rental.id}')" style="cursor: pointer; transition: background-color 0.2s ease; border-bottom: 1px solid var(--border-color);" onmouseover="this.style.backgroundColor='var(--cinza-100)'" onmouseout="this.style.backgroundColor='transparent'">
+                <td style="padding: 1rem; font-size: 0.95rem; font-weight: 600; color: var(--cinza-700);">${rental.clientName}</td>
+                <td style="padding: 1rem; font-size: 0.95rem; color: var(--cinza-700);">${formatDate(rental.startDate)} a ${formatDate(rental.endDate)}</td>
+                <td style="padding: 1rem; font-size: 0.95rem; text-align: center; font-weight: 600; color: var(--cinza-700);">${rental.days}</td>
+                <td style="padding: 1rem; font-size: 0.95rem; text-align: right; font-weight: 600; color: var(--cinza-700);">${formatCurrency(rental.dailyRate)}</td>
+                <td style="padding: 1rem; font-size: 0.95rem; text-align: right; font-weight: 800; color: var(--verde-principal);">${formatCurrency(rental.total)}</td>
+                <td style="padding: 1rem; text-align: center;">
+                    <span class="status-badge ${statusClass}" style="display: inline-block; padding: 0.4rem 0.8rem; border-radius: 0.4rem; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; white-space: nowrap;">${status}</span>
+                </td>
+            </tr>
+        `;
             });
 
-            html += '</tbody></table></div></div>';
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.5rem; border-top: 1px solid var(--border-color); flex-wrap: wrap;">
+                    <div style="color: var(--cinza-500); font-size: 0.9rem;">
+                        Mostrando <strong>${startIndex + 1}</strong> a <strong>${Math.min(startIndex + itemsPerPage, sortedRentals.length)}</strong> de <strong>${sortedRentals.length}</strong>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <button onclick="changeRentalPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''} class="btn btn-secondary btn-small" style="padding: 0.5rem 0.75rem; border: 1px solid var(--border-color); background-color: ${currentPage === 1 ? 'var(--cinza-100)' : 'white'}; color: var(--cinza-700); cursor: ${currentPage === 1 ? 'not-allowed' : 'pointer'}; opacity: ${currentPage === 1 ? '0.5' : '1'}; transition: all 0.2s ease;" onmouseover="${currentPage !== 1 ? "this.style.backgroundColor='var(--cinza-100)'" : ''}" onmouseout="${currentPage !== 1 ? "this.style.backgroundColor='white'" : ''}">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <div style="display: flex; gap: 0.25rem; align-items: center;">
+                            ${Array.from({ length: Math.min(3, totalPages) }, (_, i) => {
+                const page = currentPage <= 2 ? i + 1 : currentPage >= totalPages - 1 ? totalPages - 2 + i : currentPage - 1 + i;
+                if (page > 0 && page <= totalPages) {
+                    return `<button onclick="changeRentalPage(${page})" style="padding: 0.5rem 0.75rem; background-color: ${page === currentPage ? 'var(--verde-principal)' : 'white'}; color: ${page === currentPage ? 'white' : 'var(--cinza-700)'}; border: 1px solid var(--border-color); border-radius: 0.35rem; font-weight: 600; font-size: 0.9rem; min-width: 2.5rem; text-align: center; cursor: pointer; transition: all 0.2s ease;" onmouseover="this.style.backgroundColor='${page === currentPage ? 'var(--verde-principal)' : 'var(--cinza-100)'}'" onmouseout="this.style.backgroundColor='${page === currentPage ? 'var(--verde-principal)' : 'white'}'">
+                                ${page}
+                            </button>`;
+                }
+                return '';
+            }).join('')}
+                            ${totalPages > 3 ? `<span style="color: var(--cinza-500);">...</span>` : ''}
+                            ${totalPages > 3 ? `<button onclick="changeRentalPage(${totalPages})" style="padding: 0.5rem 0.75rem; background-color: ${currentPage === totalPages ? 'var(--verde-principal)' : 'white'}; color: ${currentPage === totalPages ? 'white' : 'var(--cinza-700)'}; border: 1px solid var(--border-color); border-radius: 0.35rem; font-weight: 600; font-size: 0.9rem; min-width: 2.5rem; text-align: center; cursor: pointer; transition: all 0.2s ease;" onmouseover="this.style.backgroundColor='${currentPage === totalPages ? 'var(--verde-principal)' : 'var(--cinza-100)'}'" onmouseout="this.style.backgroundColor='${currentPage === totalPages ? 'var(--verde-principal)' : 'white'}'">
+                                ${totalPages}
+                            </button>` : ''}
+                        </div>
+                        <button onclick="changeRentalPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''} class="btn btn-secondary btn-small" style="padding: 0.5rem 0.75rem; border: 1px solid var(--border-color); background-color: ${currentPage === totalPages ? 'var(--cinza-100)' : 'white'}; color: var(--cinza-700); cursor: ${currentPage === totalPages ? 'not-allowed' : 'pointer'}; opacity: ${currentPage === totalPages ? '0.5' : '1'}; transition: all 0.2s ease;" onmouseover="${currentPage !== totalPages ? "this.style.backgroundColor='var(--cinza-100)'" : ''}" onmouseout="${currentPage !== totalPages ? "this.style.backgroundColor='white'" : ''}">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MOBILE CARD VIEW -->
+        <div class="rentals-mobile-wrapper">
+            <div style="display: grid; gap: 1rem; padding: 0;">
+    `;
+
+            paginatedRentals.forEach(rental => {
+                const status = new Date(rental.endDate) < new Date() ? 'Finalizado' : 'Ativo';
+                const statusClass = status === 'Ativo' ? 'status-active' : 'status-finished';
+
+                html += `
+            <div class="card" onclick="openEditRentalModal('${rental.id}')" style="cursor: pointer; padding: 1.25rem; border: 1px solid var(--border-color); border-radius: 0.75rem; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); transition: all 0.3s ease; transform: translateY(0);" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0, 0, 0, 0.15)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 1px 3px rgba(0, 0, 0, 0.1)'">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 1rem;">
+                    <div>
+                        <div style="font-size: 1.1rem; font-weight: 700; color: var(--cinza-700); display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-user" style="color: var(--verde-principal);"></i>
+                            ${rental.clientName}
+                        </div>
+                    </div>
+                    <span class="status-badge ${statusClass}" style="display: inline-block; padding: 0.35rem 0.7rem; border-radius: 0.4rem; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; white-space: nowrap;">${status}</span>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    <div style="display: flex; gap: 0.75rem; align-items: flex-start;">
+                        <i class="fas fa-calendar-alt" style="color: var(--verde-principal); margin-top: 0.25rem; min-width: 20px;"></i>
+                        <div style="flex: 1;">
+                            <div style="font-size: 0.75rem; color: var(--cinza-500); font-weight: 600; text-transform: uppercase; margin-bottom: 0.25rem;">Período</div>
+                            <div style="font-size: 0.95rem; font-weight: 600; color: var(--cinza-700);">${formatDate(rental.startDate)} a ${formatDate(rental.endDate)}</div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div style="display: flex; gap: 0.75rem; align-items: flex-start;">
+                            <i class="fas fa-calculator" style="color: var(--verde-principal); margin-top: 0.25rem; min-width: 20px;"></i>
+                            <div style="flex: 1;">
+                                <div style="font-size: 0.75rem; color: var(--cinza-500); font-weight: 600; text-transform: uppercase; margin-bottom: 0.25rem;">Dias</div>
+                                <div style="font-size: 0.95rem; font-weight: 600; color: var(--cinza-700);">${rental.days}</div>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 0.75rem; align-items: flex-start;">
+                            <i class="fas fa-tag" style="color: var(--verde-principal); margin-top: 0.25rem; min-width: 20px;"></i>
+                            <div style="flex: 1;">
+                                <div style="font-size: 0.75rem; color: var(--cinza-500); font-weight: 600; text-transform: uppercase; margin-bottom: 0.25rem;">Diária</div>
+                                <div style="font-size: 0.95rem; font-weight: 600; color: var(--cinza-700);">${formatCurrency(rental.dailyRate)}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="padding-top: 0.75rem; border-top: 2px solid var(--cinza-100); display: flex; gap: 0.75rem; align-items: flex-start;">
+                        <i class="fas fa-money-bill" style="color: var(--verde-principal); margin-top: 0.25rem; min-width: 20px;"></i>
+                        <div style="flex: 1;">
+                            <div style="font-size: 0.75rem; color: var(--cinza-500); font-weight: 600; text-transform: uppercase; margin-bottom: 0.25rem;">Total</div>
+                            <div style="font-size: 1.2rem; font-weight: 800; color: var(--verde-principal);">${formatCurrency(rental.total)}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+            });
+
+            html += `
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 1.5rem; flex-wrap: wrap; padding: 0 0.5rem;">
+                <div style="color: var(--cinza-500); font-size: 0.85rem; width: 100%; text-align: center; margin-bottom: 0.5rem;">
+                    <strong>${startIndex + 1}</strong> a <strong>${Math.min(startIndex + itemsPerPage, sortedRentals.length)}</strong> de <strong>${sortedRentals.length}</strong>
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center; justify-content: center; width: 100%;">
+                    <button onclick="changeRentalPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''} style="padding: 0.5rem 0.75rem; border: 1px solid var(--border-color); background-color: ${currentPage === 1 ? 'var(--cinza-100)' : 'white'}; color: var(--cinza-700); cursor: ${currentPage === 1 ? 'not-allowed' : 'pointer'}; border-radius: 0.35rem; font-weight: 600; opacity: ${currentPage === 1 ? '0.5' : '1'};" onmouseover="${currentPage !== 1 ? "this.style.backgroundColor='var(--cinza-100)'" : ''}" onmouseout="${currentPage !== 1 ? "this.style.backgroundColor='white'" : ''}">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <div style="display: flex; gap: 0.25rem;">
+                        ${Array.from({ length: Math.min(3, totalPages) }, (_, i) => {
+                const page = currentPage <= 2 ? i + 1 : currentPage >= totalPages - 1 ? totalPages - 2 + i : currentPage - 1 + i;
+                if (page > 0 && page <= totalPages) {
+                    return `<button onclick="changeRentalPage(${page})" style="padding: 0.4rem 0.6rem; background-color: ${page === currentPage ? 'var(--verde-principal)' : 'white'}; color: ${page === currentPage ? 'white' : 'var(--cinza-700)'}; border: 1px solid var(--border-color); border-radius: 0.35rem; font-weight: 600; font-size: 0.85rem; min-width: 2.2rem; cursor: pointer;" onmouseover="this.style.backgroundColor='${page === currentPage ? 'var(--verde-principal)' : 'var(--cinza-100)'}'" onmouseout="this.style.backgroundColor='${page === currentPage ? 'var(--verde-principal)' : 'white'}'">
+                            ${page}
+                        </button>`;
+                }
+                return '';
+            }).join('')}
+                    </div>
+                    <button onclick="changeRentalPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''} style="padding: 0.5rem 0.75rem; border: 1px solid var(--border-color); background-color: ${currentPage === totalPages ? 'var(--cinza-100)' : 'white'}; color: var(--cinza-700); cursor: ${currentPage === totalPages ? 'not-allowed' : 'pointer'}; border-radius: 0.35rem; font-weight: 600; opacity: ${currentPage === totalPages ? '0.5' : '1'};" onmouseover="${currentPage !== totalPages ? "this.style.backgroundColor='var(--cinza-100)'" : ''}" onmouseout="${currentPage !== totalPages ? "this.style.backgroundColor='white'" : ''}">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
             return html;
+        }
+
+        function changeRentalPage(page) {
+            window.rentalCurrentPage = page;
+            renderPage();
         }
 
         function openEditRentalModal(id) {
@@ -1351,22 +1828,64 @@
 
             if (startDate && endDate && startDate <= endDate) {
                 const days = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-                document.getElementById('editRentalTotal').value = formatCurrency(dailyRate * days);
+                const total = dailyRate * days;
+                document.getElementById('editRentalTotal').value = formatCurrency(total);
+                document.getElementById('editRentalDays').value = days;
             } else {
                 showToast('Datas inválidas', 'warning', 1500);
             }
         }
 
+        function saveEditRental() {
+            const clientName = document.getElementById('editRentalClientName').value.trim();
+            const startDate = document.getElementById('editRentalStartDate').value;
+            const endDate = document.getElementById('editRentalEndDate').value;
+            const dailyRate = parseFloat(document.getElementById('editRentalDailyRate').value);
+
+            if (!clientName) {
+                showToast('Digite o nome do cliente', 'warning', 2000);
+                return;
+            }
+
+            if (!startDate || !endDate || new Date(startDate) > new Date(endDate)) {
+                showToast('Datas inválidas', 'warning', 2000);
+                return;
+            }
+
+            if (!dailyRate || dailyRate <= 0) {
+                showToast('Diária deve ser maior que zero', 'warning', 2000);
+                return;
+            }
+
+            const rental = rentals.find(r => r.id === currentEditingRentalId);
+            if (rental) {
+                const days = Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)) + 1;
+
+                rental.clientName = clientName;
+                rental.startDate = startDate;
+                rental.endDate = endDate;
+                rental.dailyRate = dailyRate;
+                rental.days = days;
+                rental.total = dailyRate * days;
+
+                triggerSync('rental_updated', { id: currentEditingRentalId, rental });
+                closeModal('editRentalModal');
+                renderPage();
+                showToast(`✅ Locação de ${clientName} atualizada com sucesso!`, 'success', 2000);
+            }
+        }
+
         function deleteCurrentRental() {
+            const rental = rentals.find(r => r.id === currentEditingRentalId);
             showConfirmModal(
                 'Cancelar Locação',
-                'Esta ação não pode ser desfeita. Tem certeza que deseja cancelar essa locação?',
+                `Deseja cancelar a locação de ${rental?.clientName}? Esta ação não pode ser desfeita.`,
                 () => {
                     rentals = rentals.filter(r => r.id !== currentEditingRentalId);
-                    saveData();
+                    triggerSync('rental_deleted', { id: currentEditingRentalId });
                     closeModal('editRentalModal');
-                    showToast('Locação cancelada com sucesso!', 'success', 2000);
                     renderPage();
+                    showToast(`✅ Locação cancelada com sucesso!`, 'success', 2000);
                 }
             );
         }
@@ -1381,18 +1900,21 @@
                 const total = catExpenses.reduce((sum, e) => sum + e.amount, 0);
 
                 html += `
-                    <div class="category-card" onclick="openCategoryHistory('${catKey}')">
-                        <button class="category-add-btn" onclick="event.stopPropagation(); openQuickAdd('${catKey}')">
-                            <i class="fas fa-plus"></i>
-                        </button>
-                        <div class="category-icon"><i class="${cat.icon}"></i></div>
-                        <div class="category-name">${cat.name}</div>
-                        <div class="category-total">${formatCurrency(total)}</div>
-                        <div style="color: var(--cinza-500); font-size: 0.8rem;">
-                            ${catExpenses.length} lançamento${catExpenses.length !== 1 ? 's' : ''}
-                        </div>
-                    </div>
-                `;
+            <div class="category-card" onclick="openCategoryHistory('${catKey}')" style="position: relative;">
+                <button class="category-add-btn" onclick="event.stopPropagation(); openQuickAdd('${catKey}')" style="position: absolute; top: -0.75rem; right: -0.75rem; width: 2.5rem; height: 2.5rem; border-radius: 50%; background-color: var(--verde-principal); color: white; border: none; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);" onmouseover="this.style.backgroundColor='#059669'; this.style.transform='scale(1.1)'" onmouseout="this.style.backgroundColor='var(--verde-principal)'; this.style.transform='scale(1)'">
+                    <i class="fas fa-plus"></i>
+                </button>
+                <div class="category-icon"><i class="${cat.icon}"></i></div>
+                <div class="category-name">${cat.name}</div>
+                <div class="category-total">${formatCurrency(total)}</div>
+                <div style="color: var(--cinza-500); font-size: 0.8rem; margin-bottom: 1rem;">
+                    ${catExpenses.length} lançamento${catExpenses.length !== 1 ? 's' : ''}
+                </div>
+                <button onclick="event.stopPropagation(); openQuickAdd('${catKey}')" style="width: 100%; padding: 0.75rem; background-color: var(--verde-principal); color: white; border: none; border-radius: 0.5rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem;" onmouseover="this.style.backgroundColor='#059669'; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(16, 185, 129, 0.3)'" onmouseout="this.style.backgroundColor='var(--verde-principal)'; this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                    <i class="fas fa-plus"></i> Lançar
+                </button>
+            </div>
+        `;
             });
 
             html += '</div></div>';
@@ -1407,7 +1929,6 @@
             document.getElementById('quickNote').value = '';
             document.getElementById('quickAddForm').onsubmit = (e) => submitQuickAdd(e, category);
             openModal('quickAddModal');
-            showToast('Modal de lançamento aberto', 'info', 1500);
         }
 
         function submitQuickAdd(e, category) {
@@ -1415,6 +1936,7 @@
 
             const amount = parseFloat(document.getElementById('quickAmount').value);
             const date = document.getElementById('quickDate').value;
+            const note = document.getElementById('quickNote').value.trim();
 
             if (!amount || amount <= 0) {
                 showToast('Digite um valor válido', 'warning', 2000);
@@ -1431,15 +1953,15 @@
                 category,
                 amount: amount,
                 date: date,
-                note: document.getElementById('quickNote').value,
+                note: note,
                 createdAt: new Date().toISOString()
             };
 
             expenses.push(expense);
-            saveData();
+            triggerSync('expense_created', { expense });
             closeModal('quickAddModal');
-            showToast(`Gasto de ${formatCurrency(expense.amount)} lançado com sucesso!`, 'success', 2000);
             renderPage();
+            showToast(`✅ Gasto de ${formatCurrency(expense.amount)} lançado!`, 'success', 2000);
         }
 
         function openCategoryHistory(category) {
@@ -1456,19 +1978,18 @@
                 historyHtml = '<div class="table-container"><table><thead><tr><th><i class="fas fa-calendar"></i> Data</th><th><i class="fas fa-file-alt"></i> Observação</th><th style="text-align: right;"><i class="fas fa-money-bill"></i> Valor</th></tr></thead><tbody>';
                 catExpenses.forEach(exp => {
                     historyHtml += `
-                        <tr onclick="openEditExpense('${exp.id}')">
-                            <td style="font-weight: 700; color: var(--verde-principal);">${formatDate(exp.date)}</td>
-                            <td>${exp.note || '-'}</td>
-                            <td style="text-align: right; font-weight: 800; color: var(--verde-principal);">${formatCurrency(exp.amount)}</td>
-                        </tr>
-                    `;
+                <tr onclick="openEditExpense('${exp.id}')">
+                    <td style="font-weight: 700; color: var(--verde-principal);">${formatDate(exp.date)}</td>
+                    <td>${exp.note || '-'}</td>
+                    <td style="text-align: right; font-weight: 800; color: var(--verde-principal);">${formatCurrency(exp.amount)}</td>
+                </tr>
+            `;
                 });
                 historyHtml += '</tbody></table></div>';
             }
 
             document.getElementById('historyList').innerHTML = historyHtml;
             openModal('historyModal');
-            showToast(`Histórico de ${cat.name} carregado`, 'info', 1500);
         }
 
         function openEditExpense(id) {
@@ -1486,24 +2007,53 @@
             }
         }
 
+        function saveEditExpense() {
+            const amount = parseFloat(document.getElementById('editAmount').value);
+            const date = document.getElementById('editDate').value;
+            const note = document.getElementById('editNote').value.trim();
+
+            if (!amount || amount <= 0) {
+                showToast('Digite um valor válido', 'warning', 2000);
+                return;
+            }
+
+            if (!date) {
+                showToast('Selecione uma data', 'warning', 2000);
+                return;
+            }
+
+            const expense = expenses.find(e => e.id === currentEditingExpenseId);
+            if (expense) {
+                expense.amount = amount;
+                expense.date = date;
+                expense.note = note;
+
+                triggerSync('expense_updated', { id: currentEditingExpenseId, expense });
+                closeModal('editExpenseModal');
+                renderPage();
+                showToast(`✅ Lançamento atualizado para ${formatCurrency(amount)}!`, 'success', 2000);
+            }
+        }
+
         function deleteCurrentExpense() {
             showConfirmModal(
                 'Excluir Lançamento',
-                'Esta ação não pode ser desfeita. Tem certeza que deseja excluir esse lançamento?',
+                'Esta ação não pode ser desfeita. Deseja excluir esse lançamento?',
                 () => {
                     expenses = expenses.filter(e => e.id !== currentEditingExpenseId);
-                    saveData();
+                    triggerSync('expense_deleted', { id: currentEditingExpenseId });
                     closeModal('editExpenseModal');
-                    showToast('Lançamento excluído com sucesso!', 'success', 2000);
                     renderPage();
+                    showToast(`✅ Lançamento excluído com sucesso!`, 'success', 2000);
                 }
             );
         }
+
         // ===== CLIENTS =====
         function renderClients() {
             let html = `<button class="btn btn-primary" onclick="openNewClientFlow()" style="margin-bottom: 1.5rem;">
-                <i class="fas fa-user-plus"></i> Novo Cliente
-            </button>`;
+        <i class="fas fa-user-plus"></i> Novo Cliente
+    </button>`;
 
             if (clients.length === 0) {
                 html += `<div class="card"><div class="empty-state"><i class="fas fa-users"></i><p>Nenhum cliente registrado</p></div></div>`;
@@ -1511,13 +2061,13 @@
                 html += '<div class="card"><div class="table-container"><table><thead><tr><th><i class="fas fa-user"></i> Nome</th><th><i class="fas fa-envelope"></i> Email</th><th><i class="fas fa-id-card"></i> CPF</th><th><i class="fas fa-phone"></i> Telefone</th></tr></thead><tbody>';
                 clients.forEach(client => {
                     html += `
-                        <tr onclick="openEditClientModal('${client.id}')">
-                            <td><strong>${client.name}</strong></td>
-                            <td>${client.email || '-'}</td>
-                            <td>${client.cpf || '-'}</td>
-                            <td>${client.phone || '-'}</td>
-                        </tr>
-                    `;
+                <tr onclick="openEditClientModal('${client.id}')">
+                    <td><strong>${client.name}</strong></td>
+                    <td>${client.email || '-'}</td>
+                    <td>${client.cpf || '-'}</td>
+                    <td>${client.phone || '-'}</td>
+                </tr>
+            `;
                 });
                 html += '</tbody></table></div></div>';
             }
@@ -1532,7 +2082,35 @@
             document.getElementById('editClientPhone').value = '';
             currentEditingClientId = null;
             openModal('clientModal');
-            showToast('Modal de novo cliente aberto', 'info', 1500);
+        }
+
+        function saveNewClient() {
+            const name = document.getElementById('editClientName').value.trim();
+            const email = document.getElementById('editClientEmail').value.trim();
+            const cpf = document.getElementById('editClientCPF').value.trim();
+            const phone = document.getElementById('editClientPhone').value.trim();
+
+            if (!name) {
+                showToast('Digite o nome do cliente', 'warning', 2000);
+                return;
+            }
+
+            if (currentEditingClientId === null) {
+                const newClient = {
+                    id: Date.now().toString(),
+                    name,
+                    email,
+                    cpf,
+                    phone,
+                    createdAt: new Date().toISOString()
+                };
+
+                clients.push(newClient);
+                triggerSync('client_created', { client: newClient });
+                closeModal('clientModal');
+                renderPage();
+                showToast(`✅ Cliente "${name}" criado com sucesso!`, 'success', 2000);
+            }
         }
 
         function openEditClientModal(id) {
@@ -1540,9 +2118,9 @@
             const client = clients.find(c => c.id === id);
             if (client) {
                 document.getElementById('editClientName').value = client.name;
-                document.getElementById('editClientEmail').value = client.email;
-                document.getElementById('editClientCPF').value = client.cpf;
-                document.getElementById('editClientPhone').value = client.phone;
+                document.getElementById('editClientEmail').value = client.email || '';
+                document.getElementById('editClientCPF').value = client.cpf || '';
+                document.getElementById('editClientPhone').value = client.phone || '';
                 openModal('editClientModal');
                 showToast('Cliente carregado para edição', 'info', 1500);
             } else {
@@ -1550,19 +2128,42 @@
             }
         }
 
+        function saveEditClient() {
+            const name = document.getElementById('editClientName').value.trim();
+            const email = document.getElementById('editClientEmail').value.trim();
+            const cpf = document.getElementById('editClientCPF').value.trim();
+            const phone = document.getElementById('editClientPhone').value.trim();
+
+            if (!name) {
+                showToast('Digite o nome do cliente', 'warning', 2000);
+                return;
+            }
+
+            const client = clients.find(c => c.id === currentEditingClientId);
+            if (client) {
+                client.name = name;
+                client.email = email;
+                client.cpf = cpf;
+                client.phone = phone;
+
+                triggerSync('client_updated', { id: currentEditingClientId, client });
+                closeModal('editClientModal');
+                renderPage();
+                showToast(`✅ Cliente "${name}" atualizado com sucesso!`, 'success', 2000);
+            }
+        }
+
         function deleteCurrentClient() {
+            const client = clients.find(c => c.id === currentEditingClientId);
             showConfirmModal(
                 'Excluir Cliente',
-                'Esta ação não pode ser desfeita. Tem certeza que deseja excluir esse cliente? Todas as suas locações e reservas serão mantidas no histórico.',
+                `Deseja excluir ${client?.name}? Locações e reservas serão mantidas no histórico.`,
                 () => {
-                    const clientToDelete = clients.find(c => c.id === currentEditingClientId);
-                    const clientName = clientToDelete?.name || 'Cliente';
-
                     clients = clients.filter(c => c.id !== currentEditingClientId);
-                    saveData();
+                    triggerSync('client_deleted', { id: currentEditingClientId });
                     closeModal('editClientModal');
-                    showToast(`Cliente "${clientName}" excluído com sucesso!`, 'success', 2000);
                     renderPage();
+                    showToast(`✅ Cliente "${client.name}" excluído com sucesso!`, 'success', 2000);
                 }
             );
         }
@@ -1600,18 +2201,18 @@
 
             reserves.forEach(reserve => {
                 html += `
-                    <tr>
-                        <td><strong>${reserve.clientName}</strong></td>
-                        <td>${formatDate(reserve.startDate)} a ${formatDate(reserve.endDate)}</td>
-                        <td style="text-align: center; font-weight: 600;">${reserve.days}</td>
-                        <td style="text-align: right; font-weight: 600;">${formatCurrency(reserve.dailyRate)}</td>
-                        <td style="text-align: center;">
-                            <button class="btn btn-primary btn-small" onclick="confirmReserveFlow('${reserve.id}')">
-                                <i class="fas fa-check"></i> Confirmar
-                            </button>
-                        </td>
-                    </tr>
-                `;
+            <tr>
+                <td><strong>${reserve.clientName}</strong></td>
+                <td>${formatDate(reserve.startDate)} a ${formatDate(reserve.endDate)}</td>
+                <td style="text-align: center; font-weight: 600;">${reserve.days}</td>
+                <td style="text-align: right; font-weight: 600;">${formatCurrency(reserve.dailyRate)}</td>
+                <td style="text-align: center;">
+                    <button class="btn btn-primary btn-small" onclick="confirmReserveFlow('${reserve.id}')">
+                        <i class="fas fa-check"></i> Confirmar
+                    </button>
+                </td>
+            </tr>
+        `;
             });
 
             html += '</tbody></table></div></div>';
@@ -1639,20 +2240,125 @@
                         total: reserve.dailyRate * reserve.days,
                         createdAt: new Date().toISOString()
                     };
+
                     rentals.push(rental);
                     reserves = reserves.filter(r => r.id !== id);
-                    saveData();
-                    showToast(`Reserva de ${reserve.clientName} confirmada como locação!`, 'success', 2000);
+                    triggerSync('reserve_confirmed', { reserveId: id, rental });
                     renderPage();
+                    showToast(`✅ Reserva de ${reserve.clientName} confirmada como locação!`, 'success', 2000);
                 }
             );
         }
 
+        function deleteCurrentReserve() {
+            const reserve = reserves.find(r => r.id === currentEditingReserveId);
+            showConfirmModal(
+                'Cancelar Reserva',
+                `Deseja cancelar a reserva de ${reserve?.clientName}? Esta ação não pode ser desfeita.`,
+                () => {
+                    reserves = reserves.filter(r => r.id !== currentEditingReserveId);
+                    triggerSync('reserve_deleted', { id: currentEditingReserveId });
+                    closeModal('editReserveModal');
+                    renderPage();
+                    showToast(`✅ Reserva cancelada com sucesso!`, 'success', 2000);
+                }
+            );
+        }
+
+        // ===== RENTAL CREATION =====
+        function submitRentalForm() {
+            const clientId = document.getElementById('rentalClient').value;
+            const dailyRate = parseFloat(document.getElementById('rentalDailyRate').value);
+
+            if (!clientId) {
+                showToast('Selecione um cliente', 'warning', 2000);
+                return;
+            }
+
+            if (!dailyRate || dailyRate <= 0) {
+                showToast('Digite uma diária válida', 'warning', 2000);
+                return;
+            }
+
+            if (selectedDays.length === 0) {
+                showToast('Selecione pelo menos um dia', 'warning', 2000);
+                return;
+            }
+
+            const client = clients.find(c => c.id === clientId);
+            const startDate = selectedDays[0];
+            const endDate = selectedDays[selectedDays.length - 1];
+            const days = selectedDays.length;
+
+            const rental = {
+                id: Date.now().toString(),
+                clientName: client.name,
+                startDate,
+                endDate,
+                days,
+                dailyRate,
+                total: dailyRate * days,
+                createdAt: new Date().toISOString()
+            };
+
+            rentals.push(rental);
+            selectedDays = [];
+            triggerSync('rental_created', { rental });
+            closeModal('rentalModal');
+            renderPage();
+            showToast(`✅ Locação de ${client.name} criada com sucesso!`, 'success', 2000);
+        }
+
+        // ===== RESERVE CREATION =====
+        function submitReserveForm() {
+            const clientId = document.getElementById('reserveClient').value;
+            const dailyRate = parseFloat(document.getElementById('reserveDailyRate').value);
+
+            if (!clientId) {
+                showToast('Selecione um cliente', 'warning', 2000);
+                return;
+            }
+
+            if (!dailyRate || dailyRate <= 0) {
+                showToast('Digite uma diária válida', 'warning', 2000);
+                return;
+            }
+
+            if (selectedDays.length === 0) {
+                showToast('Selecione pelo menos um dia', 'warning', 2000);
+                return;
+            }
+
+            const client = clients.find(c => c.id === clientId);
+            const startDate = selectedDays[0];
+            const endDate = selectedDays[selectedDays.length - 1];
+            const days = selectedDays.length;
+
+            const reserve = {
+                id: Date.now().toString(),
+                clientName: client.name,
+                startDate,
+                endDate,
+                days,
+                dailyRate,
+                createdAt: new Date().toISOString()
+            };
+
+            reserves.push(reserve);
+            selectedDays = [];
+            triggerSync('reserve_created', { reserve });
+            closeModal('reserveModal');
+            renderPage();
+            showToast(`✅ Reserva de ${client.name} criada com sucesso!`, 'success', 2000);
+        }
+
+
+
         // ===== NOTES =====
         function renderNotes() {
             let html = `<button class="btn btn-primary" onclick="openNewNoteFlow()" style="margin-bottom: 1.5rem;">
-                <i class="fas fa-plus"></i> Nova Anotação
-            </button>`;
+        <i class="fas fa-plus"></i> Nova Anotação
+    </button>`;
 
             if (notes.length === 0) {
                 html += `<div class="card"><div class="empty-state"><i class="fas fa-sticky-note"></i><p>Nenhuma anotação criada</p></div></div>`;
@@ -1660,50 +2366,24 @@
                 html += '<div class="notes-grid">';
                 [...notes].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).forEach(note => {
                     html += `
-                        <div class="note-card">
-                            <div class="note-header">
-                                <div class="note-title">${note.title}</div>
-                                <button class="note-delete" onclick="deleteNoteFlow('${note.id}')" title="Deletar anotação">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
-                            <div class="note-content">${note.content}</div>
-                            <div class="note-date">${formatDate(note.createdAt.split('T')[0])}</div>
-                        </div>
-                    `;
-                });
-                html += '</div>';
-            }
-
-            return html;
-        } function renderNotes() {
-            let html = `<button class="btn btn-primary" onclick="openNewNoteFlow()" style="margin-bottom: 1.5rem;">
-                <i class="fas fa-plus"></i> Nova Anotação
-            </button>`;
-
-            if (notes.length === 0) {
-                html += `<div class="card"><div class="empty-state"><i class="fas fa-sticky-note"></i><p>Nenhuma anotação criada</p></div></div>`;
-            } else {
-                html += '<div class="notes-grid">';
-                [...notes].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).forEach(note => {
-                    html += `
-                        <div class="note-card">
-                            <div class="note-header">
-                                <div class="note-title">${note.title}</div>
-                                <button class="note-delete" onclick="deleteNoteFlow('${note.id}')" type="button" title="Deletar anotação">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
-                            <div class="note-content">${note.content}</div>
-                            <div class="note-date">${formatDate(note.createdAt.split('T')[0])}</div>
-                        </div>
-                    `;
+                <div class="note-card">
+                    <div class="note-header">
+                        <div class="note-title">${note.title}</div>
+                        <button class="note-delete" onclick="deleteNoteFlow('${note.id}')" type="button" title="Deletar anotação">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                    <div class="note-content">${note.content}</div>
+                    <div class="note-date">${formatDate(note.createdAt.split('T')[0])}</div>
+                </div>
+            `;
                 });
                 html += '</div>';
             }
 
             return html;
         }
+
         function openNewNoteFlow() {
             openModal('addNoteModal');
         }
@@ -1719,16 +2399,17 @@
                 'Excluir Anotação',
                 `Deseja excluir a anotação "${note.title}"? Esta ação não pode ser desfeita.`,
                 () => {
+                    deleteFromFirebase('notes', id);
                     notes = notes.filter(n => n.id !== id);
-                    saveData();
                     showToast('Anotação excluída com sucesso!', 'success', 2000);
                     renderPage();
                 }
             );
         }
 
-function renderReports() {
-    return `
+        // ===== REPORTS =====
+        function renderReports() {
+            return `
         <div class="pdf-selector">
             <label class="pdf-selector-label"><i class="fas fa-file-pdf"></i> Tipo de Relatório:</label>
             <select class="pdf-selector-select" id="pdfTypeSelect" onchange="pdfType = this.value">
@@ -1766,103 +2447,103 @@ function renderReports() {
             </div>
         </div>
     `;
-}
-
-function getMonthName() {
-    return new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase();
-}
-
-function showToastMessage(message, type = 'success') {
-    const toastMsg = document.createElement('div');
-    const bgColor = type === 'success' ? '#10b981' : '#ef4444';
-    const icon = type === 'success' ? '✓' : '✗';
-    toastMsg.style.cssText = `position:fixed;top:20px;right:20px;background:${bgColor};color:white;padding:16px 24px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.2);font-weight:600;z-index:9999;font-size:14px;`;
-    toastMsg.textContent = `${icon} ${message}`;
-    document.body.appendChild(toastMsg);
-    setTimeout(() => toastMsg.remove(), 3000);
-}
-
-async function exportReportPDF() {
-    const pdfType = document.getElementById('pdfTypeSelect').value;
-    const { jsPDF } = window.jspdf;
-    const exportBtn = event.target.closest('.export-btn');
-    const originalHTML = exportBtn.innerHTML;
-
-    exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Gerando...';
-    exportBtn.disabled = true;
-
-    const pdfContainer = document.createElement('div');
-    pdfContainer.style.cssText = 'position:absolute;left:-9999px;top:0;background:white;';
-
-    let pdfHTML = '';
-
-    if (pdfType === 'geral' || pdfType === 'receitas') {
-        pdfHTML += generateReceitasPageHTML();
-    }
-
-    if (pdfType === 'geral' || pdfType === 'despesas') {
-        pdfHTML += generateDespesasPageHTML();
-    }
-
-    if (pdfType === 'geral' || pdfType === 'clientes') {
-        pdfHTML += generateClientesPageHTML();
-    }
-
-    pdfContainer.innerHTML = pdfHTML;
-    document.body.appendChild(pdfContainer);
-
-    try {
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        const pages = pdfContainer.querySelectorAll('.pdf-page');
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const pdfWidth = 210;
-
-        for (let i = 0; i < pages.length; i++) {
-            const canvas = await html2canvas(pages[i], {
-                scale: 2,
-                useCORS: true,
-                logging: false,
-                backgroundColor: '#ffffff',
-                width: 793,
-                windowWidth: 793
-            });
-
-            const imgData = canvas.toDataURL('image/png');
-            const imgHeight = (canvas.height * pdfWidth) / canvas.width;
-
-            if (i > 0) {
-                pdf.addPage();
-            }
-
-            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgHeight);
         }
 
-        pdf.save(`relatorio-kaudan-${new Date().toISOString().split('T')[0]}.pdf`);
-        showToastMessage('PDF exportado com sucesso!', 'success');
-        exportBtn.innerHTML = originalHTML;
-        exportBtn.disabled = false;
-    } catch (error) {
-        console.error('Erro ao gerar PDF:', error);
-        showToastMessage('Erro ao gerar PDF. Tente novamente!', 'error');
-        exportBtn.innerHTML = originalHTML;
-        exportBtn.disabled = false;
-    } finally {
-        document.body.removeChild(pdfContainer);
-    }
-}
+        function getMonthName() {
+            return new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase();
+        }
 
-const PDF_COLORS = {
-    receitas: { primary: '#10b981', dark: '#047857', light: '#d1fae5', bg: '#f0fdf4' },
-    despesas: { primary: '#f59e0b', dark: '#d97706', light: '#fed7aa', bg: '#fef3c7' },
-    clientes: { primary: '#3b82f6', dark: '#1e40af', light: '#bfdbfe', bg: '#eff6ff' }
-};
+        function showToastMessage(message, type = 'success') {
+            const toastMsg = document.createElement('div');
+            const bgColor = type === 'success' ? '#10b981' : '#ef4444';
+            const icon = type === 'success' ? '✓' : '✗';
+            toastMsg.style.cssText = `position:fixed;top:20px;right:20px;background:${bgColor};color:white;padding:16px 24px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.2);font-weight:600;z-index:9999;font-size:14px;`;
+            toastMsg.textContent = `${icon} ${message}`;
+            document.body.appendChild(toastMsg);
+            setTimeout(() => toastMsg.remove(), 3000);
+        }
 
-function getPDFPageBase(type, title, subtitle, icon) {
-    const colors = PDF_COLORS[type] || PDF_COLORS.receitas;
-    
-    return {
-        getHeader: () => `
+        async function exportReportPDF() {
+            const pdfType = document.getElementById('pdfTypeSelect').value;
+            const { jsPDF } = window.jspdf;
+            const exportBtn = event.target.closest('.export-btn');
+            const originalHTML = exportBtn.innerHTML;
+
+            exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Gerando...';
+            exportBtn.disabled = true;
+
+            const pdfContainer = document.createElement('div');
+            pdfContainer.style.cssText = 'position:absolute;left:-9999px;top:0;background:white;';
+
+            let pdfHTML = '';
+
+            if (pdfType === 'geral' || pdfType === 'receitas') {
+                pdfHTML += generateReceitasPageHTML();
+            }
+
+            if (pdfType === 'geral' || pdfType === 'despesas') {
+                pdfHTML += generateDespesasPageHTML();
+            }
+
+            if (pdfType === 'geral' || pdfType === 'clientes') {
+                pdfHTML += generateClientesPageHTML();
+            }
+
+            pdfContainer.innerHTML = pdfHTML;
+            document.body.appendChild(pdfContainer);
+
+            try {
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                const pages = pdfContainer.querySelectorAll('.pdf-page');
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                const pdfWidth = 210;
+
+                for (let i = 0; i < pages.length; i++) {
+                    const canvas = await html2canvas(pages[i], {
+                        scale: 2,
+                        useCORS: true,
+                        logging: false,
+                        backgroundColor: '#ffffff',
+                        width: 793,
+                        windowWidth: 793
+                    });
+
+                    const imgData = canvas.toDataURL('image/png');
+                    const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+
+                    if (i > 0) {
+                        pdf.addPage();
+                    }
+
+                    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgHeight);
+                }
+
+                pdf.save(`relatorio-kaudan-${new Date().toISOString().split('T')[0]}.pdf`);
+                showToastMessage('PDF exportado com sucesso!', 'success');
+                exportBtn.innerHTML = originalHTML;
+                exportBtn.disabled = false;
+            } catch (error) {
+                console.error('Erro ao gerar PDF:', error);
+                showToastMessage('Erro ao gerar PDF. Tente novamente!', 'error');
+                exportBtn.innerHTML = originalHTML;
+                exportBtn.disabled = false;
+            } finally {
+                document.body.removeChild(pdfContainer);
+            }
+        }
+        // ===== PDF GENERATION FUNCTIONS =====
+        const PDF_COLORS = {
+            receitas: { primary: '#10b981', dark: '#047857', light: '#d1fae5', bg: '#f0fdf4' },
+            despesas: { primary: '#f59e0b', dark: '#d97706', light: '#fed7aa', bg: '#fef3c7' },
+            clientes: { primary: '#3b82f6', dark: '#1e40af', light: '#bfdbfe', bg: '#eff6ff' }
+        };
+
+        function getPDFPageBase(type, title, subtitle, icon) {
+            const colors = PDF_COLORS[type] || PDF_COLORS.receitas;
+
+            return {
+                getHeader: () => `
             <div style="background: linear-gradient(135deg, ${colors.primary} 0%, ${colors.dark} 100%); color: white; padding: 20px 36px; display: flex; justify-content: space-between; align-items: center; gap: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
                 <div style="flex: 1;">
                     <div style="font-size: 18px; font-weight: 900; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; letter-spacing: -0.5px;"><i class="fas fa-${icon}"></i> ${title}</div>
@@ -1880,13 +2561,13 @@ function getPDFPageBase(type, title, subtitle, icon) {
                 </div>
             </div>
         `,
-        getFooter: (pageNum, totalPages, info = '') => `
+                getFooter: (pageNum, totalPages, info = '') => `
             <div style="padding: 12px 36px; border-top: 3px solid ${colors.light}; background: #fafafa; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #64748b; font-weight: 600;">
                 <div><i class="fas fa-info-circle" style="margin-right: 4px; color: ${colors.primary};"></i> ${info || 'Relatório gerado automaticamente'}</div>
                 <div><span style="color: ${colors.primary}; font-weight: 900;">Página ${pageNum}</span> de ${totalPages}</div>
             </div>
         `,
-        getEmptyState: () => `
+                getEmptyState: () => `
             <div class="pdf-page" style="width: 210mm; height: 297mm; background: #f8fafc; color: #111827; font-family: 'Segoe UI', -apple-system, sans-serif; padding: 0; margin-bottom: 20px; display: flex; flex-direction: column;">
                 ${getPDFPageBase(type, title, subtitle, icon).getHeader()}
                 <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 50px; text-align: center;">
@@ -1896,31 +2577,31 @@ function getPDFPageBase(type, title, subtitle, icon) {
                 </div>
             </div>
         `
-    };
-}
+            };
+        }
 
-function generateReceitasPageHTML() {
-    const totalReceita = calculateTotalRevenue();
-    const monthlyRevenue = calculateMonthlyRevenue();
-    const sortedRentals = [...rentals].sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
-    const colors = PDF_COLORS.receitas;
-    const base = getPDFPageBase('receitas', 'ALUGUÉIS', 'Relatório de Receitas', 'key');
+        function generateReceitasPageHTML() {
+            const totalReceita = calculateTotalRevenue();
+            const monthlyRevenue = calculateMonthlyRevenue();
+            const sortedRentals = [...rentals].sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+            const colors = PDF_COLORS.receitas;
+            const base = getPDFPageBase('receitas', 'ALUGUÉIS', 'Relatório de Receitas', 'key');
 
-    if (sortedRentals.length === 0) {
-        return base.getEmptyState();
-    }
+            if (sortedRentals.length === 0) {
+                return base.getEmptyState();
+            }
 
-    let pagesHTML = '';
-    let currentPage = [];
-    const rowsPerPage = 25;
+            let pagesHTML = '';
+            let currentPage = [];
+            const rowsPerPage = 25;
 
-    sortedRentals.forEach((rental, idx) => {
-        currentPage.push(rental);
-        if (currentPage.length === rowsPerPage || idx === sortedRentals.length - 1) {
-            const pageNum = Math.floor(idx / rowsPerPage) + 1;
-            const totalPages = Math.ceil(sortedRentals.length / rowsPerPage);
+            sortedRentals.forEach((rental, idx) => {
+                currentPage.push(rental);
+                if (currentPage.length === rowsPerPage || idx === sortedRentals.length - 1) {
+                    const pageNum = Math.floor(idx / rowsPerPage) + 1;
+                    const totalPages = Math.ceil(sortedRentals.length / rowsPerPage);
 
-            const metricsCards = pageNum === 1 ? `
+                    const metricsCards = pageNum === 1 ? `
                 <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px;">
                     <div style="background: linear-gradient(135deg, ${colors.primary}15 0%, ${colors.primary}08 100%); border: 2px solid ${colors.light}; border-radius: 8px; padding: 12px; text-align: center; box-shadow: 0 2px 6px rgba(16, 185, 129, 0.1);">
                         <div style="color: ${colors.primary}; font-size: 22px; margin-bottom: 4px;"><i class="fas fa-money-bill-wave"></i></div>
@@ -1945,7 +2626,7 @@ function generateReceitasPageHTML() {
                 </div>
             ` : '';
 
-            pagesHTML += `
+                    pagesHTML += `
                 <div class="pdf-page" style="width: 210mm; height: 297mm; background: #f8fafc; color: #111827; font-family: 'Segoe UI', -apple-system, sans-serif; padding: 0; margin-bottom: 20px; display: flex; flex-direction: column;">
                     ${base.getHeader()}
                     <div style="padding: 14px 24px; flex: 1; display: flex; flex-direction: column; gap: 10px; overflow-y: auto;">
@@ -1981,39 +2662,39 @@ function generateReceitasPageHTML() {
                     ${base.getFooter(pageNum, totalPages, `Total: ${formatCurrency(totalReceita)}`)}
                 </div>
             `;
-            currentPage = [];
+                    currentPage = [];
+                }
+            });
+
+            return pagesHTML;
         }
-    });
 
-    return pagesHTML;
-}
+        function generateDespesasPageHTML() {
+            const totalDespesas = calculateTotalExpenses();
+            const categoryTotals = {};
+            expenses.forEach(exp => {
+                categoryTotals[exp.category] = (categoryTotals[exp.category] || 0) + exp.amount;
+            });
 
-function generateDespesasPageHTML() {
-    const totalDespesas = calculateTotalExpenses();
-    const categoryTotals = {};
-    expenses.forEach(exp => {
-        categoryTotals[exp.category] = (categoryTotals[exp.category] || 0) + exp.amount;
-    });
+            const colors = PDF_COLORS.despesas;
+            const base = getPDFPageBase('despesas', 'DESPESAS', 'Análise Detalhada de Gastos', 'receipt');
 
-    const colors = PDF_COLORS.despesas;
-    const base = getPDFPageBase('despesas', 'DESPESAS', 'Análise Detalhada de Gastos', 'receipt');
+            if (expenses.length === 0) {
+                return base.getEmptyState();
+            }
 
-    if (expenses.length === 0) {
-        return base.getEmptyState();
-    }
+            const sortedExpenses = [...expenses].sort((a, b) => new Date(b.date) - new Date(a.date));
+            let pagesHTML = '';
+            let currentPage = [];
+            const rowsPerPage = 25;
 
-    const sortedExpenses = [...expenses].sort((a, b) => new Date(b.date) - new Date(a.date));
-    let pagesHTML = '';
-    let currentPage = [];
-    const rowsPerPage = 25;
+            sortedExpenses.forEach((exp, idx) => {
+                currentPage.push(exp);
+                if (currentPage.length === rowsPerPage || idx === sortedExpenses.length - 1) {
+                    const pageNum = Math.floor(idx / rowsPerPage) + 1;
+                    const totalPages = Math.ceil(sortedExpenses.length / rowsPerPage);
 
-    sortedExpenses.forEach((exp, idx) => {
-        currentPage.push(exp);
-        if (currentPage.length === rowsPerPage || idx === sortedExpenses.length - 1) {
-            const pageNum = Math.floor(idx / rowsPerPage) + 1;
-            const totalPages = Math.ceil(sortedExpenses.length / rowsPerPage);
-
-            const metricsCards = pageNum === 1 ? `
+                    const metricsCards = pageNum === 1 ? `
                 <div style="display: grid; grid-template-columns: repeat(${Math.min(Object.keys(categoryTotals).length, 4)}, 1fr); gap: 12px; margin-bottom: 14px;">
                     ${Object.keys(categoryTotals).slice(0, 4).map(catKey => `
                         <div style="background: linear-gradient(135deg, ${colors.primary}15 0%, ${colors.primary}08 100%); border: 2px solid ${colors.light}; border-radius: 8px; padding: 12px; text-align: center; box-shadow: 0 2px 6px rgba(245, 158, 11, 0.1);">
@@ -2025,7 +2706,7 @@ function generateDespesasPageHTML() {
                 </div>
             ` : '';
 
-            pagesHTML += `
+                    pagesHTML += `
                 <div class="pdf-page" style="width: 210mm; height: 297mm; background: #f8fafc; color: #111827; font-family: 'Segoe UI', -apple-system, sans-serif; padding: 0; margin-bottom: 20px; display: flex; flex-direction: column;">
                     ${base.getHeader()}
                     <div style="padding: 14px 24px; flex: 1; display: flex; flex-direction: column; gap: 10px; overflow-y: auto;">
@@ -2057,37 +2738,37 @@ function generateDespesasPageHTML() {
                     ${base.getFooter(pageNum, totalPages, `Total: ${formatCurrency(totalDespesas)}`)}
                 </div>
             `;
-            currentPage = [];
+                    currentPage = [];
+                }
+            });
+
+            return pagesHTML;
         }
-    });
 
-    return pagesHTML;
-}
+        function generateClientesPageHTML() {
+            const clientRentals = {};
+            rentals.forEach(r => {
+                clientRentals[r.clientName] = (clientRentals[r.clientName] || 0) + r.total;
+            });
 
-function generateClientesPageHTML() {
-    const clientRentals = {};
-    rentals.forEach(r => {
-        clientRentals[r.clientName] = (clientRentals[r.clientName] || 0) + r.total;
-    });
+            const colors = PDF_COLORS.clientes;
+            const base = getPDFPageBase('clientes', 'CLIENTES', 'Carteira Ativa', 'address-book');
 
-    const colors = PDF_COLORS.clientes;
-    const base = getPDFPageBase('clientes', 'CLIENTES', 'Carteira Ativa', 'address-book');
+            if (clients.length === 0) {
+                return base.getEmptyState();
+            }
 
-    if (clients.length === 0) {
-        return base.getEmptyState();
-    }
+            let pagesHTML = '';
+            let currentPage = [];
+            const rowsPerPage = 25;
 
-    let pagesHTML = '';
-    let currentPage = [];
-    const rowsPerPage = 25;
+            clients.forEach((client, idx) => {
+                currentPage.push(client);
+                if (currentPage.length === rowsPerPage || idx === clients.length - 1) {
+                    const pageNum = Math.floor(idx / rowsPerPage) + 1;
+                    const totalPages = Math.ceil(clients.length / rowsPerPage);
 
-    clients.forEach((client, idx) => {
-        currentPage.push(client);
-        if (currentPage.length === rowsPerPage || idx === clients.length - 1) {
-            const pageNum = Math.floor(idx / rowsPerPage) + 1;
-            const totalPages = Math.ceil(clients.length / rowsPerPage);
-
-            pagesHTML += `
+                    pagesHTML += `
                 <div class="pdf-page" style="width: 210mm; height: 297mm; background: #f8fafc; color: #111827; font-family: 'Segoe UI', -apple-system, sans-serif; padding: 0; margin-bottom: 20px; display: flex; flex-direction: column;">
                     ${base.getHeader()}
                     <div style="padding: 14px 24px; flex: 1; display: flex; flex-direction: column; gap: 10px; overflow-y: auto;">
@@ -2139,14 +2820,12 @@ function generateClientesPageHTML() {
                     ${base.getFooter(pageNum, totalPages)}
                 </div>
             `;
-            currentPage = [];
+                    currentPage = [];
+                }
+            });
+
+            return pagesHTML;
         }
-    });
-
-    return pagesHTML;
-}
-
-
 
         // ===== FORM HANDLERS =====
         function setupFormHandlers() {
@@ -2189,7 +2868,7 @@ function generateClientesPageHTML() {
             };
 
             rentals.push(rental);
-            saveData();
+            saveToFirebase('rentals', rentals);
             document.getElementById('rentalForm').reset();
             selectedDays = [];
             closeModal('rentalModal');
@@ -2231,7 +2910,7 @@ function generateClientesPageHTML() {
             rental.days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
             rental.total = rental.dailyRate * rental.days;
 
-            saveData();
+            saveToFirebase('rentals', rentals);
             closeModal('editRentalModal');
             showToast('Locação atualizada com sucesso!', 'success', 2000);
             renderPage();
@@ -2262,7 +2941,7 @@ function generateClientesPageHTML() {
             exp.amount = amount;
             exp.date = date;
             exp.note = document.getElementById('editNote').value;
-            saveData();
+            saveToFirebase('expenses', expenses);
             closeModal('editExpenseModal');
             showToast('Lançamento atualizado com sucesso!', 'success', 2000);
             renderPage();
@@ -2282,7 +2961,7 @@ function generateClientesPageHTML() {
             settings.initialCapital = initialCapital;
             settings.defaultDailyRate = defaultDailyRate;
 
-            saveSettings();
+            saveToFirebase('settings', settings);
             closeModal('settingsModal');
             showToast('Configurações salvas com sucesso!', 'success', 2000);
             renderPage();
@@ -2311,7 +2990,7 @@ function generateClientesPageHTML() {
             };
 
             clients.push(client);
-            saveData();
+            saveToFirebase('clients', clients);
             document.getElementById('clientForm').reset();
             closeModal('clientModal');
             showToast(`Cliente "${name}" adicionado com sucesso!`, 'success', 2000);
@@ -2337,7 +3016,7 @@ function generateClientesPageHTML() {
             client.email = document.getElementById('editClientEmail').value;
             client.cpf = document.getElementById('editClientCPF').value;
             client.phone = document.getElementById('editClientPhone').value;
-            saveData();
+            saveToFirebase('clients', clients);
             closeModal('editClientModal');
             showToast(`Cliente "${name}" atualizado com sucesso!`, 'success', 2000);
             renderPage();
@@ -2377,7 +3056,7 @@ function generateClientesPageHTML() {
             };
 
             reserves.push(reserve);
-            saveData();
+            saveToFirebase('reserves', reserves);
             document.getElementById('reserveForm').reset();
             selectedDays = [];
             closeModal('reserveModal');
@@ -2416,7 +3095,7 @@ function generateClientesPageHTML() {
             const end = new Date(endDate);
             reserve.days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
 
-            saveData();
+            saveToFirebase('reserves', reserves);
             closeModal('editReserveModal');
             showToast('Reserva atualizada com sucesso!', 'success', 2000);
             renderPage();
@@ -2441,7 +3120,7 @@ function generateClientesPageHTML() {
             };
 
             notes.push(note);
-            saveData();
+            saveToFirebase('notes', notes);
             document.getElementById('addNoteForm').reset();
             closeModal('addNoteModal');
             showToast('Anotação salva com sucesso!', 'success', 2000);
@@ -2468,7 +3147,6 @@ function generateClientesPageHTML() {
                 document.getElementById('editReserveTotal').value = formatCurrency(dailyRate * days);
             }
         }
-
         // ===== CALCULATIONS =====
         function calculateCapital() {
             let capital = settings.initialCapital;
@@ -2538,11 +3216,6 @@ function generateClientesPageHTML() {
             }, duration);
         }
 
-
-
-
-
-
         // ===== CONFIRM MODAL =====
         function showConfirmModal(title, message, onConfirm) {
             const modal = document.getElementById('confirmModal');
@@ -2557,10 +3230,6 @@ function generateClientesPageHTML() {
 
             openModal('confirmModal');
         }
-
-
-
-
 
         // ===== RESET DATA =====
         function resetAllData() {
@@ -2580,8 +3249,12 @@ function generateClientesPageHTML() {
                             initialCapital: 5000,
                             defaultDailyRate: 200
                         };
-                        saveData();
-                        saveSettings();
+                        saveToFirebase('rentals', rentals);
+                        saveToFirebase('expenses', expenses);
+                        saveToFirebase('reserves', reserves);
+                        saveToFirebase('clients', clients);
+                        saveToFirebase('notes', notes);
+                        saveToFirebase('settings', settings);
                         showToast('Todos os dados foram resetados com sucesso!', 'success', 2000);
                         renderPage();
                     }
@@ -2589,10 +3262,9 @@ function generateClientesPageHTML() {
             }, 300);
         }
 
-
-
         // ===== START =====
-        initAuth();</script>
+        initAuth();
+    </script>
 </body>
 
 </html>
