@@ -1,5 +1,3 @@
-
-
 <!doctype html>
 <html lang="pt-BR" style="height: 100%;">
 
@@ -420,8 +418,7 @@
             </form>
         </div>
     </div>
-    <script>
-        // Firebase Config
+    <script>// Firebase Config
         const firebaseConfig = {
             apiKey: "AIzaSyCrZhLisPAGQerW4Ziuk3wyEE3I23gFyyQ",
             authDomain: "kaudan-5d2d3.firebaseapp.com",
@@ -481,47 +478,11 @@
 
         // ===== UTILITIES =====
         function formatCurrency(value) {
-            if (!value || isNaN(value)) return 'R$ 0,00';
-
-            const num = parseFloat(value);
-
-            if (num >= 1000000) {
-                return 'R$ ' + (num / 1000000).toFixed(2).replace('.', ',') + 'M';
-            } else if (num >= 1000) {
-                return 'R$ ' + (num / 1000).toFixed(2).replace('.', ',') + 'K';
-            }
-
-            return 'R$ ' + num.toFixed(2).replace('.', ',');
+            return new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            }).format(value);
         }
-
-        // Exemplos de uso:
-        // formatCurrency(1500) → "R$ 1,50K"
-        // formatCurrency(50000) → "R$ 50,00K"
-        // formatCurrency(1500000) → "R$ 1,50M"
-        // formatCurrency(750) → "R$ 750,00"
-
-
-        function formatCurrency(value, options = {}) {
-            if (!value || isNaN(value)) return 'R$ 0,00';
-
-            const num = parseFloat(value);
-            const useAbreviation = options.useAbreviation !== false; // true por padrão
-            const decimals = options.decimals !== undefined ? options.decimals : 2;
-
-            if (!useAbreviation) {
-                return 'R$ ' + num.toFixed(decimals).replace('.', ',');
-            }
-
-            if (num >= 1000000) {
-                return 'R$ ' + (num / 1000000).toFixed(decimals).replace('.', ',') + 'M';
-            } else if (num >= 1000) {
-                return 'R$ ' + (num / 1000).toFixed(decimals).replace('.', ',') + 'K';
-            }
-
-            return 'R$ ' + num.toFixed(decimals).replace('.', ',');
-        }
-
-
 
         function formatDate(dateStr) {
             const date = new Date(dateStr + 'T00:00:00');
@@ -696,18 +657,28 @@
                 }
             });
         }
-
         function saveToFirebase(dataType, data) {
             if (!currentUserId) return;
-            const firebaseData = {};
-            data.forEach((item, index) => {
-                firebaseData[item.id || index] = item;
-            });
+
+            let firebaseData = {};
+
+            // Se for array, converte para objeto com IDs como chaves
+            if (Array.isArray(data)) {
+                data.forEach((item, index) => {
+                    firebaseData[item.id || index] = item;
+                });
+            } else {
+                // Se for objeto, usa direto
+                firebaseData = data;
+            }
+
             db.ref(`users/${currentUserId}/${dataType}`).set(firebaseData)
                 .catch((error) => {
                     showToast('Erro ao salvar ' + dataType + ': ' + error.message, 'error');
                 });
         }
+
+
 
         function updateToFirebase(dataType, id, data) {
             if (!currentUserId) return;
@@ -724,9 +695,6 @@
                     showToast('Erro ao deletar: ' + error.message, 'error');
                 });
         }
-
-        // Sistema de notificações Toast
-        const toastContainer = document.getElementById('toast-container') || createToastContainer();
 
         function createToastContainer() {
             const container = document.createElement('div');
@@ -745,6 +713,7 @@
         }
 
         function showToast(message, type = 'info', duration = 3000) {
+            const toastContainer = document.getElementById('toast-container') || createToastContainer();
             const toast = document.createElement('div');
             const colors = {
                 success: '#10b981',
@@ -767,44 +736,63 @@
             toast.textContent = message;
             toastContainer.appendChild(toast);
 
+            if (!document.getElementById('toast-styles')) {
+                const style = document.createElement('style');
+                style.id = 'toast-styles';
+                style.textContent = `
+            @keyframes slideIn {
+                from {
+                    transform: translateX(400px);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+            }
+            @keyframes slideOut {
+                from {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+                to {
+                    transform: translateX(400px);
+                    opacity: 0;
+                }
+            }
+        `;
+                document.head.appendChild(style);
+            }
+
             setTimeout(() => {
                 toast.style.animation = 'slideOut 0.3s ease-out';
                 setTimeout(() => toast.remove(), 300);
             }, duration);
         }
 
-        // Adicionar animações CSS
-        if (!document.getElementById('toast-styles')) {
-            const style = document.createElement('style');
-            style.id = 'toast-styles';
-            style.textContent = `
-        @keyframes slideIn {
-            from {
-                transform: translateX(400px);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-        
-        @keyframes slideOut {
-            from {
-                transform: translateX(0);
-                opacity: 1;
-            }
-            to {
-                transform: translateX(400px);
-                opacity: 0;
-            }
-        }
-    `;
-            document.head.appendChild(style);
-        }
-
-        // Modal de confirmação
         function showConfirmModal(title, message, onConfirm, onCancel) {
+            if (!document.getElementById('modal-styles')) {
+                const style = document.createElement('style');
+                style.id = 'modal-styles';
+                style.textContent = `
+            @keyframes fadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+            @keyframes slideUp {
+                from {
+                    transform: translateY(20px);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateY(0);
+                    opacity: 1;
+                }
+            }
+        `;
+                document.head.appendChild(style);
+            }
+
             const overlay = document.createElement('div');
             overlay.style.cssText = `
         position: fixed;
@@ -878,39 +866,10 @@
 
             cancelBtn.addEventListener('click', () => {
                 overlay.remove();
-                onCancel && onCancel();
+                if (onCancel) onCancel();
             });
         }
 
-        // Adicionar animações para modal
-        if (!document.getElementById('modal-styles')) {
-            const style = document.createElement('style');
-            style.id = 'modal-styles';
-            style.textContent = `
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-            }
-            to {
-                opacity: 1;
-            }
-        }
-        
-        @keyframes slideUp {
-            from {
-                transform: translateY(20px);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-    `;
-            document.head.appendChild(style);
-        }
-
-        // Função logout modificada
         function logout() {
             showConfirmModal(
                 'Sair do Sistema',
@@ -935,41 +894,38 @@
             );
         }
 
-
-        // ===== INIT =====
-        function init() {
-            loadSettings();
-            loadData();
-            setupNavigation();
-            setupFormHandlers();
-            setupModalBackdrop();
-            renderPage();
-        }
-
-        // ===== MODAL MANAGEMENT =====
         function setupModalBackdrop() {
             const backdrop = document.getElementById('modalBackdrop');
-            backdrop.addEventListener('click', () => {
-                document.querySelectorAll('.modal.show').forEach(modal => {
-                    modal.classList.remove('show');
+            if (backdrop) {
+                backdrop.addEventListener('click', () => {
+                    document.querySelectorAll('.modal.show').forEach(modal => {
+                        modal.classList.remove('show');
+                    });
+                    backdrop.classList.remove('show');
                 });
-                backdrop.classList.remove('show');
-            });
+            }
         }
 
         function openModal(id) {
             const modal = document.getElementById(id);
             const backdrop = document.getElementById('modalBackdrop');
 
+            if (!modal || !backdrop) return;
+
             modal.classList.add('show');
             backdrop.classList.add('show');
 
             if (id === 'rentalModal') {
-                document.getElementById('dailyRate').value = settings.defaultDailyRate;
-                calcRentalTotal();
+                const dailyRate = document.getElementById('dailyRate');
+                if (dailyRate) {
+                    dailyRate.value = settings.defaultDailyRate;
+                    calcRentalTotal();
+                }
             } else if (id === 'settingsModal') {
-                document.getElementById('initialCapital').value = settings.initialCapital;
-                document.getElementById('defaultDailyRate').value = settings.defaultDailyRate;
+                const initialCapital = document.getElementById('initialCapital');
+                const defaultDailyRate = document.getElementById('defaultDailyRate');
+                if (initialCapital) initialCapital.value = settings.initialCapital;
+                if (defaultDailyRate) defaultDailyRate.value = settings.defaultDailyRate;
             } else if (id === 'reserveModal') {
                 populateClientSelect();
             }
@@ -984,49 +940,60 @@
                 modal.classList.remove('show');
             }
 
-            // Verifica se ainda existe algum modal aberto
             const anyOpen = document.querySelectorAll('.modal.show').length > 0;
 
             if (!anyOpen && backdrop) {
                 backdrop.classList.remove('show');
             }
 
-            // Limpa conteúdo apenas do modal principal
             if (modalContent && id === 'modal') {
                 modalContent.innerHTML = '';
             }
         }
 
-        // ===== DATA MANAGEMENT =====
         function loadSettings() {
-            const saved = localStorage.getItem('rentalflow_settings');
-            if (saved) {
-                settings = { ...settings, ...JSON.parse(saved) };
-            }
+            if (!currentUserId) return;
+            db.ref(`users/${currentUserId}/settings`).once('value', (snapshot) => {
+                if (snapshot.exists()) {
+                    settings = { ...settings, ...snapshot.val() };
+                }
+            });
         }
 
         function saveSettings() {
-            localStorage.setItem('rentalflow_settings', JSON.stringify(settings));
+            if (!currentUserId) return;
+            db.ref(`users/${currentUserId}/settings`).set(settings)
+                .catch((error) => {
+                    showToast('Erro ao salvar configurações: ' + error.message, 'error');
+                });
         }
 
         function loadData() {
-            const savedRentals = localStorage.getItem('rentalflow_rentals');
-            rentals = savedRentals ? Object.values(JSON.parse(savedRentals)) : [];
+            if (!currentUserId) return;
 
-            const savedExpenses = localStorage.getItem('rentalflow_expenses');
-            expenses = savedExpenses ? Object.values(JSON.parse(savedExpenses)) : [];
+            db.ref(`users/${currentUserId}/rentals`).once('value', (snapshot) => {
+                rentals = snapshot.val() ? Object.values(snapshot.val()) : [];
+            });
 
-            const savedReserves = localStorage.getItem('rentalflow_reserves');
-            reserves = savedReserves ? Object.values(JSON.parse(savedReserves)) : [];
+            db.ref(`users/${currentUserId}/expenses`).once('value', (snapshot) => {
+                expenses = snapshot.val() ? Object.values(snapshot.val()) : [];
+            });
 
-            const savedClients = localStorage.getItem('rentalflow_clients');
-            clients = savedClients ? Object.values(JSON.parse(savedClients)) : [];
+            db.ref(`users/${currentUserId}/reserves`).once('value', (snapshot) => {
+                reserves = snapshot.val() ? Object.values(snapshot.val()) : [];
+            });
 
-            const savedNotes = localStorage.getItem('rentalflow_notes');
-            notes = savedNotes ? Object.values(JSON.parse(savedNotes)) : [];
+            db.ref(`users/${currentUserId}/clients`).once('value', (snapshot) => {
+                clients = snapshot.val() ? Object.values(snapshot.val()) : [];
+            });
+
+            db.ref(`users/${currentUserId}/notes`).once('value', (snapshot) => {
+                notes = snapshot.val() ? Object.values(snapshot.val()) : [];
+            });
         }
 
         function saveData() {
+            if (!currentUserId) return;
             saveToFirebase('rentals', rentals);
             saveToFirebase('expenses', expenses);
             saveToFirebase('reserves', reserves);
@@ -1034,35 +1001,13 @@
             saveToFirebase('notes', notes);
         }
 
-        function saveToFirebase(dataType, data) {
-            if (!data || !Array.isArray(data)) {
-                data = [];
-            }
-
-            const firebaseData = {};
-            data.forEach((item, index) => {
-                firebaseData[item.id || index] = item;
-            });
-
-            localStorage.setItem('rentalflow_' + dataType, JSON.stringify(firebaseData));
-        }
-
-        function updateToFirebase(dataType, id, dataUpdate) {
-            const key = 'rentalflow_' + dataType;
-            const saved = localStorage.getItem(key);
-            const firebaseData = saved ? JSON.parse(saved) : {};
-
-            firebaseData[id] = { ...firebaseData[id], ...dataUpdate };
-            localStorage.setItem(key, JSON.stringify(firebaseData));
-        }
-
-        function deleteFromFirebase(dataType, id) {
-            const key = 'rentalflow_' + dataType;
-            const saved = localStorage.getItem(key);
-            const firebaseData = saved ? JSON.parse(saved) : {};
-
-            delete firebaseData[id];
-            localStorage.setItem(key, JSON.stringify(firebaseData));
+        function init() {
+            loadSettings();
+            loadData();
+            setupNavigation();
+            setupFormHandlers();
+            setupModalBackdrop();
+            renderPage();
         }
 
         // ===== NAVIGATION =====
@@ -1412,7 +1357,7 @@
             saveSettings();
             closeModal();
             refreshDashboard();
-            showToast(`✅ Capital inicial atualizado de ${formatCurrency(oldCapital)} para ${formatCurrency(newValue)}`, 'success');
+            showToast(` Capital inicial atualizado de ${formatCurrency(oldCapital)} para ${formatCurrency(newValue)}`, 'success');
         }
 
         function refreshDashboard() {
@@ -1873,7 +1818,7 @@
                 triggerSync('rental_updated', { id: currentEditingRentalId, rental });
                 closeModal('editRentalModal');
                 renderPage();
-                showToast(`✅ Locação de ${clientName} atualizada com sucesso!`, 'success', 2000);
+                showToast(` Locação de ${clientName} atualizada com sucesso!`, 'success', 2000);
             }
         }
 
@@ -1887,7 +1832,7 @@
                     triggerSync('rental_deleted', { id: currentEditingRentalId });
                     closeModal('editRentalModal');
                     renderPage();
-                    showToast(`✅ Locação cancelada com sucesso!`, 'success', 2000);
+                    showToast(` Locação cancelada com sucesso!`, 'success', 2000);
                 }
             );
         }
@@ -1963,7 +1908,7 @@
             triggerSync('expense_created', { expense });
             closeModal('quickAddModal');
             renderPage();
-            showToast(`✅ Gasto de ${formatCurrency(expense.amount)} lançado!`, 'success', 2000);
+            showToast(` Gasto de ${formatCurrency(expense.amount)} lançado!`, 'success', 2000);
         }
 
         function openCategoryHistory(category) {
@@ -2033,7 +1978,7 @@
                 triggerSync('expense_updated', { id: currentEditingExpenseId, expense });
                 closeModal('editExpenseModal');
                 renderPage();
-                showToast(`✅ Lançamento atualizado para ${formatCurrency(amount)}!`, 'success', 2000);
+                showToast(` Lançamento atualizado para ${formatCurrency(amount)}!`, 'success', 2000);
             }
         }
 
@@ -2046,7 +1991,7 @@
                     triggerSync('expense_deleted', { id: currentEditingExpenseId });
                     closeModal('editExpenseModal');
                     renderPage();
-                    showToast(`✅ Lançamento excluído com sucesso!`, 'success', 2000);
+                    showToast(` Lançamento excluído com sucesso!`, 'success', 2000);
                 }
             );
         }
@@ -2111,7 +2056,7 @@
                 triggerSync('client_created', { client: newClient });
                 closeModal('clientModal');
                 renderPage();
-                showToast(`✅ Cliente "${name}" criado com sucesso!`, 'success', 2000);
+                showToast(` Cliente "${name}" criado com sucesso!`, 'success', 2000);
             }
         }
 
@@ -2151,7 +2096,7 @@
                 triggerSync('client_updated', { id: currentEditingClientId, client });
                 closeModal('editClientModal');
                 renderPage();
-                showToast(`✅ Cliente "${name}" atualizado com sucesso!`, 'success', 2000);
+                showToast(` Cliente "${name}" atualizado com sucesso!`, 'success', 2000);
             }
         }
 
@@ -2165,7 +2110,7 @@
                     triggerSync('client_deleted', { id: currentEditingClientId });
                     closeModal('editClientModal');
                     renderPage();
-                    showToast(`✅ Cliente "${client.name}" excluído com sucesso!`, 'success', 2000);
+                    showToast(`Cliente "${client.name}" excluído com sucesso!`, 'success', 2000);
                 }
             );
         }
@@ -2247,7 +2192,7 @@
                     reserves = reserves.filter(r => r.id !== id);
                     triggerSync('reserve_confirmed', { reserveId: id, rental });
                     renderPage();
-                    showToast(`✅ Reserva de ${reserve.clientName} confirmada como locação!`, 'success', 2000);
+                    showToast(` Reserva de ${reserve.clientName} confirmada como locação!`, 'success', 2000);
                 }
             );
         }
@@ -2262,7 +2207,7 @@
                     triggerSync('reserve_deleted', { id: currentEditingReserveId });
                     closeModal('editReserveModal');
                     renderPage();
-                    showToast(`✅ Reserva cancelada com sucesso!`, 'success', 2000);
+                    showToast(` Reserva cancelada com sucesso!`, 'success', 2000);
                 }
             );
         }
@@ -2308,7 +2253,7 @@
             triggerSync('rental_created', { rental });
             closeModal('rentalModal');
             renderPage();
-            showToast(`✅ Locação de ${client.name} criada com sucesso!`, 'success', 2000);
+            showToast(` Locação de ${client.name} criada com sucesso!`, 'success', 2000);
         }
 
         // ===== RESERVE CREATION =====
@@ -2351,7 +2296,7 @@
             triggerSync('reserve_created', { reserve });
             closeModal('reserveModal');
             renderPage();
-            showToast(`✅ Reserva de ${client.name} criada com sucesso!`, 'success', 2000);
+            showToast(` Reserva de ${client.name} criada com sucesso!`, 'success', 2000);
         }
 
 
@@ -3265,9 +3210,7 @@
         }
 
         // ===== START =====
-        initAuth();
-    </script>
+        initAuth();</script>
 </body>
 
 </html>
-
